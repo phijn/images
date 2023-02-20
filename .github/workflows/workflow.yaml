@@ -21,7 +21,7 @@ jobs:
       contents: read
     strategy:
       matrix:
-        service: ['dummy']
+        service: ['dummy', 'cadquery']
     with:
       subfolder: './${{ matrix.service }}/'
       imageNameAddon: '-${{ matrix.service }}'

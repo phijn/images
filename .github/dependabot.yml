@@ -19,3 +19,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "friday"
+
+  - package-ecosystem: "docker"
+    directory: "/cadquery/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: "weekly"
+      day: "friday"
