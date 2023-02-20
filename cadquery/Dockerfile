@@ -1,4 +1,4 @@
-FROM ${TARGETARCH}/ubuntu:22.04 AS wget
+FROM ${TARGETARCH}/${TARGETVARIANT}/ubuntu:22.04 AS wget
 RUN apt-get update \
     && apt-get install -y wget \
     && rm -rf /var/lib/apt/lists/*
@@ -9,6 +9,10 @@ ARG ARCH=${TARGETARCH}
 
 ### getting conda for different plattforms
 FROM wget AS anaconda-armv7
+WORKDIR /tmp/
+RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-aarch64.sh" -O "./anaconda3_$ARCH.sh"
+
+FROM wget AS anaconda-arm64v8
 WORKDIR /tmp/
 RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-aarch64.sh" -O "./anaconda3_$ARCH.sh"
 
