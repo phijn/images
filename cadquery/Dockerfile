@@ -12,12 +12,15 @@ WORKDIR /tmp/
 RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-aarch64.sh" -O "./anaconda3.sh"
 
 FROM wget AS anaconda-amd64
+WORKDIR /tmp/
 RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-x86_64.sh" -O "./anaconda3.sh"
 
 FROM wget AS anaconda-ppc64le
+WORKDIR /tmp/
 RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-$ARCH.sh" -O "./anaconda3.sh"
 
 FROM wget AS anaconda-s390x
+WORKDIR /tmp/
 RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-$ARCH.sh" -O "./anaconda3.sh"
 
 
