@@ -22,7 +22,7 @@ FROM wget AS anaconda-s390x
 RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-$ARCH.sh" -O "./anaconda3_$ARCH.sh"
 
 
-FROM anaconda-${TARGETARCH} as conda_build
+FROM anaconda-${TARGETARCH}${TARGETVARIANT} as conda_build
 SHELL [ "/bin/bash", "-c" ]
 ENV CONDA_INSTALL_DIR /opt/anaconda
 ARG ARCH ${TARGETARCH}
