@@ -5,30 +5,28 @@ RUN apt-get update \
 
 ARG PYTHON_VERSION='3.9'
 ARG ANACONDA3_VERSION='2022.10'
-ARG ARCH=${TARGETARCH}
 
 ### getting conda for different plattforms
 FROM wget AS anaconda-arm64
 WORKDIR /tmp/
-RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-aarch64.sh" -O "./anaconda3_$ARCH.sh"
+RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-aarch64.sh" -O "./anaconda3.sh"
 
 FROM wget AS anaconda-amd64
-RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-x86_64.sh" -O "./anaconda3_$ARCH.sh"
+RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-x86_64.sh" -O "./anaconda3.sh"
 
 FROM wget AS anaconda-ppc64le
-RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-$ARCH.sh" -O "./anaconda3_$ARCH.sh"
+RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-$ARCH.sh" -O "./anaconda3.sh"
 
 FROM wget AS anaconda-s390x
-RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-$ARCH.sh" -O "./anaconda3_$ARCH.sh"
+RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-$ARCH.sh" -O "./anaconda3.sh"
 
 
 FROM anaconda-${TARGETARCH} as conda_build
 SHELL [ "/bin/bash", "-c" ]
 ENV CONDA_INSTALL_DIR /opt/anaconda
-ARG ARCH ${TARGETARCH}
 WORKDIR /tmp/
-RUN /bin/bash ./anaconda3_${ARCH}.sh -b -p${CONDA_INSTALL_DIR} \
-    && rm ./anaconda3_${ARCH}.sh
+RUN /bin/bash ./anaconda3.sh -b -p${CONDA_INSTALL_DIR} \
+    && rm ./anaconda3.sh
 
 RUN source ${CONDA_INSTALL_DIR}/bin/activate \
     && conda init \
