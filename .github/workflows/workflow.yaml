@@ -1,0 +1,27 @@
+---
+name: Workflow
+
+on:
+  push:
+    branch: main
+  workflow_dispatch:
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  init:
+    uses: PhilippAuch/workflows/.github/workflows/init.yaml@main
+
+  build:
+    uses: PhilippAuch/workflows/.github/workflows/buildDocker.yaml@main
+    permissions:
+      packages: write
+      contents: read
+    strategy:
+      matrix:
+        service: ['dummy']
+    with:
+      subfolder: './${{ matrix.service }}/'
+      imageNameAddon: '-${{ matrix.service }}'
