@@ -1,4 +1,4 @@
-FROM ${TARGETARCH}/${TARGETVARIANT}/ubuntu:22.04 AS wget
+FROM ubuntu:22.04 AS wget
 RUN apt-get update \
     && apt-get install -y wget \
     && rm -rf /var/lib/apt/lists/*
