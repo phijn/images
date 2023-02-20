@@ -8,7 +8,7 @@ ARG ANACONDA3_VERSION='2022.10'
 ARG ARCH=${TARGETARCH}
 
 ### getting conda for different plattforms
-FROM wget AS anaconda-arm64v8
+FROM wget AS anaconda-armv7
 WORKDIR /tmp/
 RUN wget "https://repo.anaconda.com/archive/Anaconda3-$ANACONDA3_VERSION-Linux-aarch64.sh" -O "./anaconda3_$ARCH.sh"
 
