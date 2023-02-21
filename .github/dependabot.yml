@@ -21,7 +21,7 @@ updates:
       day: "friday"
 
   - package-ecosystem: "docker"
-    directory: "/cadquery/"
+    directory: "/conda_build/"
     open-pull-requests-limit: 10
     schedule:
       interval: "weekly"

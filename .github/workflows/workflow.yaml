@@ -1,9 +1,7 @@
 ---
-name: Workflow
+name: Workflow "conda_build"
 
 on:
-  push:
-    branch: main
   workflow_dispatch:
 
 permissions:
@@ -19,9 +17,6 @@ jobs:
     permissions:
       packages: write
       contents: read
-    strategy:
-      matrix:
-        service: ['dummy', 'cadquery']
     with:
-      subfolder: './${{ matrix.service }}/'
-      imageNameAddon: '-${{ matrix.service }}'
+      subfolder: './conda_build/'
+      imageNameAddon: '-conda_build'
