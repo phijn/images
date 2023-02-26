@@ -33,3 +33,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "friday"
+
+  - package-ecosystem: "docker"
+    directory: "/ocp_copy/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: "weekly"
+      day: "friday"
