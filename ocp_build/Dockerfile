@@ -40,10 +40,10 @@ SHELL [ "/bin/bash", "-c" ]
 # COPY ./OCP /opt/OCP
 WORKDIR /opt/OCP
 ENV CONDA_ENV="env.yml"
-ENV CPP_PY_BINDGEN=${CONDA_INSTALL_DIR}/envs/cpp-py-bindgen
+ENV CPP_PY_BINDGEN=/opt/anaconda/envs/cpp-py-bindgen
 
-RUN source ${CONDA_INSTALL_DIR}/bin/activate \
-    && sed -e s/python=.../python='3.9'/  ${CONDA_ENV} > _${CONDA_ENV} \
+RUN source /opt/anaconda/bin/activate \
+    && sed -e s/python=.../python='3.9'/  env.yml > _env.yml \
     && conda init \
     && conda env create -f _env.yml \
-    && conda install -n cpp-py-bindgen -y python=${PYTHON_VERSION}
+    && conda install -n cpp-py-bindgen -y python='3.9'
