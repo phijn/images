@@ -1,0 +1,23 @@
+---
+name: Workflow "cq_lib_base"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  init:
+    uses: PhilippAuch/workflows/.github/workflows/init.yaml@main
+
+  build:
+    uses: PhilippAuch/workflows/.github/workflows/buildDocker.yaml@main
+    permissions:
+      packages: write
+      contents: read
+    with:
+      subfolder: './cq_lib_base/'
+      imageNameAddon: '-cq_lib_base'
+      platforms: 'linux/amd64,linux/arm64/v8'
