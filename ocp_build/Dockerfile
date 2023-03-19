@@ -6,6 +6,15 @@ WORKDIR /opt/OCP
 ENV CONDA_ENV="env.yml"
 ENV CPP_PY_BINDGEN=/opt/anaconda/envs/cpp-py-bindgen
 
+RUN df -h
+
+RUN sudo rm -rf /usr/share/dotnet \
+    sudo rm -rf /opt/ghc \
+    sudo rm -rf "/usr/local/share/boost" \
+    sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+RUN df -h
+
 RUN source /opt/anaconda/bin/activate \
     && sed -e s/python=.../python='3.9'/  env.yml > _env.yml \
     && conda init \
