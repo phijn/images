@@ -1,5 +1,5 @@
 FROM ghcr.io/phijn/images-cq_lib_base:latest AS cadquery
-COPY --from=cadquery_build /opt/anaconda/conda-bld /opt/anaconda/conda-bld
+COPY --from=ghcr.io/phijn/images-cadquery_build:latest /opt/anaconda/conda-bld /opt/anaconda/conda-bld
 SHELL [ "/bin/bash", "-c" ]
 
 WORKDIR /home/cadquery

@@ -5,7 +5,7 @@ RUN git clone https://github.com/CadQuery/cadquery.git /opt/cadquery \
     && git checkout 4c6f968ac1e411a53d20779309778e1b4a585fa3
 #COPY ./conda-bld /opt/anaconda/conda-bld
 
-COPY --from=build_conda_package /opt/anaconda/conda-bld /opt/anaconda/conda-bld
+COPY --from=ghcr.io/phijn/images-build_conda_package:latest /opt/anaconda/conda-bld /opt/anaconda/conda-bld
 RUN sed -e 's/\"cadquery-ocp/#\"cadquery-ocp/'  setup.py > _setup.py \
     && sed -e 's/use_scm_version=.*,/use_scm_version=False,/' _setup.py > setup.py \
     && sed -e 's/defaults/defaults\n  - local/' environment.yml > _environment.yml && mv _environment.yml environment.yml

@@ -68,3 +68,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "friday"
+
+  - package-ecosystem: "docker"
+    directory: "/build_conda_package/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: "weekly"
+      day: "friday"
