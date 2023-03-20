@@ -1,0 +1,1 @@
+FROM szymanski2adesso/cadquery-client:arm64v8

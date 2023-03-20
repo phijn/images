@@ -1,0 +1,23 @@
+---
+name: Workflow "cadquery_arm"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  init:
+    uses: PhilippAuch/workflows/.github/workflows/init.yaml@main
+
+  build:
+    uses: PhilippAuch/workflows/.github/workflows/buildDocker.yaml@main
+    permissions:
+      packages: write
+      contents: read
+    with:
+      subfolder: './cadquery_arm/'
+      imageNameAddon: '-cadquery_arm'
+      platforms: 'linux/arm64/v8'
