@@ -32,7 +32,7 @@ RUN source /opt/anaconda/bin/activate \
     && conda activate conda-build \
     && PYTHON_VERSION='3.9' conda build -c conda-forge -c conda-forge/label/occt_rc conda
 
-FROM conda_build AS cq_lib_base
+FROM ghcr.io/phijn/images-conda_build:latest AS cq_lib_base
 RUN apt-get update --allow-insecure-repositories \
     && DEBIAN_FRONTEND=noninteractiv apt-get install -y \
         libegl1-mesa libglu1-mesa freeglut3 \
