@@ -47,3 +47,24 @@ updates:
     schedule:
       interval: "weekly"
       day: "friday"
+
+  - package-ecosystem: "docker"
+    directory: "/cadquery_build/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: "weekly"
+      day: "friday"
+
+  - package-ecosystem: "docker"
+    directory: "/cadquery/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: "weekly"
+      day: "friday"
+
+  - package-ecosystem: "docker"
+    directory: "/ocp_base/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: "weekly"
+      day: "friday"
