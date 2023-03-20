@@ -1,5 +1,5 @@
 ---
-name: Workflow "cadquery_build"
+name: Workflow "build_conda_package"
 
 on:
   workflow_dispatch:
