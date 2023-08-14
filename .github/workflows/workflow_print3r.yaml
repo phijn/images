@@ -1,5 +1,5 @@
 ---
-name: Workflow "ocp_copy"
+name: Workflow "print3r"
 
 on:
   workflow_dispatch:
