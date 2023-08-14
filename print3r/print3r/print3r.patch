@@ -1,0 +1,11 @@
+--- print3r	2023-07-17 14:32:17
++++ print3radj	2023-07-17 14:33:15
+@@ -1801,7 +1801,7 @@
+       print ", slice" unless($conf{quiet});
+       print ", exec: @a\n" if($conf{verbose});
+       if($conf{slicer}eq'cura5') {
+-         ($exit,$out) = execProgram(@a,{close_stderr=>1,close_stdout=>1,log_stderr=>'/dev/null',log_stdout=>$conf{verbose}<2?'/dev/null':0});
++         ($exit,$out) = execProgram(@a,{close_stderr=>0,close_stdout=>0,log_stderr=>'/dev/null',log_stdout=>$conf{verbose}<2?'/dev/null':0});
+       } else {
+          ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});  # -- CuraEngine-3.x & 4.x won't like closed/redirected stdout
+       }

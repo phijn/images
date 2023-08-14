@@ -1,0 +1,4174 @@
+#!/usr/bin/perl
+
+# == Print3r, written by Rene K. Mueller <spiritdude@gmail.com>
+#
+# License: GPLv3
+#
+# Description:
+#  Command line tool to print parts to 3d printers without GUI
+#  - slicing with multiple slicers (slic3r, cura, etc) backend
+#  - printing via USB & network
+#  - printing .scad, .stl, .amf, .obj, .off, .3mf, .3mj and .gcode ( .fcstd, .iges, .step, .brep with freecad2any)
+#
+# History:
+# 2022/12/16: 0.3.20: new @revo-{yellow,red,blue,green,pink} macros, -o <output> added
+# 2022/11/27: 0.3.19: --device/-d --printer/-p --slicer/-s short-cuts added
+# 2022/10/17: 0.3.18: support CuraEngine-5.x / cura5 better
+# 2022/08/03: 0.3.17: adding locks for avoiding to print simulatenously to the same printer, better support for cura-slicer & CuraEngine 5.x
+# 2022/04/27: 0.3.16: --scad with --scad.<var>=<val> to pass variables to OpenSCAD models, experimental support for metatron- and enoch-slicer
+# 2022/01/17: 0.3.15: experimental support for voxgl-slicer (--slicer=voxgl)
+# 2021/12/16: 0.3.14: experimental support for lab-slicer and vox3l-slicer (--slicer=lab or vox3l)
+# 2021/12/05: 0.3.13: supporting webcams via webcam=<url>[ <url2>...] and webcam_snap=<settings>[ <setting2>...]
+# 2021/11/09: 0.3.12: more printer info in log-file, firmware and M501 output
+# 2021/10/23: 0.3.11: experimental support for zplus-slicer (--slicer=zplus)
+# 2021/10/14: 0.3.10: each successful(ended) logged print contains new or --uid=... uid (to track printed parts)
+# 2021/08/17: 0.3.9: if 'freecad2any' exists then .fcstd, .iges, .step and .brep is supported too, 'log' command takes arguments, either search term or '#' leading log entry number (see help)
+# 2021/08/07: 0.3.8: --slicer=kirimoto support added, external helper for FCstd (FreeCAD) support using freecad2any
+# 2021/07/25: 0.3.7: adding 'log' command, supporting --format=json in this context
+# 2021/06/28: 0.3.6: support for --post=<post1>[,<post2>...] and --post_<post1>=proc %i -o %o 
+# 2021/06/24: 0.3.5: experimental support for --slicer=cura-slicer & 5dmaker
+# 2021/06/21: 0.3.4: --cols=<n> and --rows=<n> in case --multiply-part is used
+# 2021/04/06: 0.3.3: experimental support for --slicer=mandoline added
+# 2021/03/08: 0.3.2: experimental support for --slicer=slicer4rtn added
+# 2021/03/02: 0.3.1: --display_upate=off does not update display, e.g. raw g-code printing
+# 2019/10/25: 0.3.0: better pipeline of processing div. formats, preliminary 3mf and 3mj (new format) support
+# 2019/09/02: 0.2.8: CuraEngine-4.2.0 support via --slicer=cura4, see wiki for install instructions
+# 2019/06/09: 0.2.7: cleaner read{STL,AMF,OBJ,OFF}(), and partTransform(), support of multiple volumes/colors/material in AMF
+# 2019/05/28: 0.2.6: cleaner script-layer within Gcode processing, slic3r-*: better multi-extruder support '--toolmap' & '--toolremap'
+# 2019/05/24: 0.2.5: preliminary slicer=prusa support, additional inline functions support for gcode transformation: &toolcolor(n,a,b,c,d,e), &hsl2cmy(h,s,l), &phases(n=2|3,p=3|4)
+# 2019/04/10: 0.2.3: support for '--prepend_gcode=...' for start-gcode addition, and '--layer-gcode=...'
+# 2019/03/19: 0.2.2: support for 'skirts', 'brims' and 'rafts', 'support' and 'seam' slicer-independent
+# 2018/12/03: 0.2.0: `client` command added, and `--device=tcp:<remote-ip>[:<n>]` added for remote printing capabilities
+# 2018/11/26: 0.1.8: proper cleanup of temporary files (incl. CTRL-C abort)
+# 2018/11/17: 0.1.7: more slicer-independent speed settings (print/travel/infill/perimeter/small_perimeter/bridge/retract_speed)
+# 2018/11/09: 0.1.6: restructure the file layout of settings (e.g. at /usr/share/print3r/ & ~/.config/print3r/) 
+# 2018/11/08: 0.1.5: new option '--scad=<code>' to additionally execute openscad code
+# 2018/11/04: 0.1.4: various improvements, remap() of general settings to slicer-specific settings via settings/<slicer>/map.ini
+# 2018/10/22: 0.1.1: better support for '--slicer=cura' and 'cura-legacy'
+# 2018/10/19: 0.1.0: '--slicer=<slicer>' with '--printer=<profile>' leads to settings/<slicer>/<profile>, '@<setting>' leads to 'settings/<setting>'
+# 2018/10/10: 0.0.9: '.amf' and '.obj' native support for preprocessing (scale,rotate,translate,mirror)
+# 2018/10/07: 0.0.8: absolute scaling like --scale=0,0,30mm or --scale=50mm, and `--scale=50%` same as --scale=0.5
+# 2018/10/06: 0.0.7: `PRINT3R` enviromental variable considered, 'baudrate=auto' probes baudrate
+# 2018/10/04: 0.0.6: 'scale', 'rotate', 'translate' and 'mirror' implemented
+# 2018/09/30: 0.0.5: slicing .scad, preparing other slicers (like CuraEngine)
+# 2018/09/27: 0.0.4: code cleanup, 'gconsole' added
+# 2018/09/26: 0.0.3: renamed to Print3r, 'gcode' command added to send single lines
+# 2018/09/24: 0.0.2: 'print' of scad, stl and gcode, 'render' of scad, stl and gcode
+# 2018/09/22: 0.0.1: first version, barely functional: slice, print and slice+print works
+
+use strict;
+use Time::HiRes qw(time sleep);
+use Device::SerialPort;
+use Math::Trig ':pi';
+# use Math::Matrix;
+use JSON;                          
+use XML::Simple;                    # -- reading .amf (XML)
+use File::Which;
+use IO::Socket::INET;
+use IO::Zlib;
+use Cwd;
+use FileHandle;
+# use Algorithm::BinPack::2D;
+
+my $NAME = "Print3r";
+my $VERSION = '0.3.20';
+my %conf;            # -- parsed and fetched options/configuration from cli, settings, profiles, macros ...
+my %conf_src;        # -- source of configuration ('env','cli','printer','macro')
+my %conf_ch;         # -- conf changed from defaults
+my $map;             # -- slicer-depending setting maps (e.g. "wall_line_count" <= "perimeters")
+my $process;         # -- metadata of the process/task itself (e.g. elapsed time per stage)
+my @f;               # -- files to process
+my @rm;              # -- temp files to remove
+my @post;            # -- post processing
+
+my($me) = ($0=~/\/([^\/]+)$/);
+
+# -- defaults
+$conf{device} = '/dev/ttyUSB0';
+$conf{slicer} = 'slic3r';
+$conf{timeout} = 10;
+$conf{baudrate} = 115200;
+$conf{auto_center} = '\1';
+$conf{gviewer} = 'yagv';
+$conf{serialif} = 'serialport';
+$conf{scadimport} = 'use';
+
+my @paths = ('./settings',"$ENV{HOME}/.config/print3r","$ENV{HOME}/.print3r","/usr/share/print3r");
+
+# -- short to long option mapping
+my %s2l = ('q'=>'quiet','v'=>'verbose','b'=>'baudrate','d'=>'device','s'=>'slicer','p'=>'printer','k'=>'keep','o'=>'output');
+my %s2a = ('d'=>1, 'p'=>1, 's'=>1, 'b'=>1, 'o'=>'output');
+
+# -- intern option (not to pass on to converters)
+my %internOption = ('quiet'=>1,'verbose'=>1,'device'=>1,'baudrate'=>1,'printer'=>1,'slicer'=>1,'output'=>1,
+   'auto_center'=>1,'random_placement'=>1,'placement'=>1,'multiply_part'=>1,'scale'=>1,'rotate'=>1,'translate'=>1,'mirror'=>1,
+   'timeout'=>1,'scad'=>1,'scadlib'=>1,'scadimport'=>1,'gviewer'=>1,'serialif'=>1,'prepend_gcode'=>1,'layer_gcode'=>1,'stick_position'=>1,
+   'display_update'=>1,'phase2_min'=>1,'phase3_min'=>1, 'webcam'=>1, 'webcam_settings'=>1, 'webcam_snap'=>1);
+
+# -- all formats we support for slicers (scad, sccad aside)
+my %formats = ( "stl"=>1, "amf"=>1, "obj"=>1, "3mf"=>1, "3mj"=>1, "off"=>1, "5mf"=>1 );
+
+if(which('freecad2any')) {   
+   $formats{$_} = 1 foreach(qw(fcstd iges step brep));
+}
+
+# -- all slicer specific information (formats = native supported format by the slicer)
+my $slicer;
+
+foreach my $p (@paths) {
+   if(-e "$p/slicer/slicers.json") {
+      local $/;
+      open(my $fh,"<","$p/slicer/slicers.json");
+      my $c = <$fh>;
+      close $fh;
+      my $s = fromJSON($c);
+      if(ref($s)eq'HASH') {
+         foreach my $k (sort keys %$s) {     # -- merge data cummulative
+            $slicer->{$k} = $s->{$k};
+         }
+      } else {
+         print STDERR "$me: invalid JSON of $p/slicer/slicers.json, skipped\n";
+      }
+   }
+}
+
+my $printer;
+$printer->{build}->{x} = 200;
+$printer->{build}->{y} = 200;
+$printer->{build}->{z} = 180;
+
+foreach (split(/:/,$ENV{PRINT3R})) {
+   my($k,$v);
+   $k = $1, $k =~ s/\-/_/g, $conf{$k} = '\1', $conf_src{$k} = 'env' if(/^([\w\-\.]+)$/);
+   ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $conf{$k} = $v, $conf_src{$k} = 'env', next if(/^([\w\-\.]+)=(.*)$/);
+}
+#foreach (@ARGV) {                # -- parse command-line arguments
+while($_=shift(@ARGV)) {
+   if(/^-(\w+)$/) {
+      foreach my $f (split(/|/,$1)) {     # -- '-v' or '-vv' -> "--verbose=2"
+         if($s2l{$f} && $s2a{$f}) {
+            $conf{$s2l{$f}} = shift(@ARGV);
+         } else {
+            $conf{$s2l{$f}}++;
+         }
+         $conf_src{$s2l{$f}} = 'cli';
+      }
+      next;
+   }
+   my($k,$v);          # -- NOTE: all options '-' => '_' for consistency, also all settings from macros or files
+   $k = $1, $k =~ s/\-/_/g, $conf{$k} = '\1', $conf_src{$k} = 'cli', next if(/^--([\w\-\.]+)$/);
+   ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $conf{$k} .= $v, $conf_src{$k} = 'cli', next if(/^--([\w\-\.]+)\+=(.*)$/);
+   ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $conf{$k} = $v, $conf_src{$k} = 'cli', next if(/^--([\w\-\.]+)=(.*)$/);
+   push(@f,$_);
+}
+
+delete $conf{auto_center} if($conf{random_placement});                                # -- resolve contradictions
+delete $conf{random_placement}, delete $conf{auto_center} if($conf{translate});       # --    "            "
+delete $conf{random_placement}, delete $conf{auto_center} if($conf{placement});
+$conf{auto_center} = "\1" if($conf{placement}eq'center');
+$conf{random_placement} = "\1" if($conf{placement}eq'random');
+
+$conf{printer} = 'default' if(!$conf{printer}); # -- no printer defined, let's get 'default.ini' if available (should be)
+
+if($conf{version}) {
+   print "$NAME $VERSION\n";
+   if($conf{verbose}) {
+      foreach my $v (@{versions()}) {
+         print "- $v\n";
+      }
+   }   
+   exit 0;
+}
+
+$| = 1;
+
+$process->{version} = "$NAME $VERSION";
+
+if(!$conf_src{slicer}) {                     # -- slicer not set explicitly on cli
+   my $slicer_base;
+   foreach my $fn (@f) {                     # -- let's look at each file to slice
+      next if(!-e $fn);                      # -- we only check if the file actually exists
+      my $fext = ($fn =~ /\.(\w+)$/);
+      my $warn = 0;
+      if(!$slicer->{$conf{slicer}}->{formats}->{$fext}) {     # -- default slicer doesn't support file to slice
+         foreach my $s ($conf{slicer},sort keys %$slicer) {   # -- let's try to find appropriate slicer (first hit)
+            if($slicer->{$s}->{formats}->{$fext}) {
+               if($slicer_base && $slicer_base ne $s) {
+                  $warn++, print "$me: WARN: you mix multiple formats for $fn ($fext) but contradicting slicer ($slicer_base chosen, $s needed)\n" if($warn<=0);
+               }
+               $conf{slicer} = $slicer_base = $s unless($slicer_base);
+               last;
+            }
+         }
+      }
+   }
+}
+
+if($slicer->{$conf{slicer}}->{exe}) {
+   if(!which($slicer->{$conf{slicer}}->{exe})) {        # -- probe selected slicer for availability
+      error("slicer '$conf{slicer}' executable ($slicer->{$conf{slicer}}->{exe}) not found");
+   }
+} else {
+   if(!which($conf{slicer})) {                     # -- slicer executable directly set?
+      error("slicer '$conf{slicer}' executable not defined and not found");
+   }
+}
+   
+if($conf{slicer}) {     # -- process .../<slicer>/base.ini to $printer and fetch map-data
+   my %gc;
+   foreach my $p (@paths) {
+      foreach my $fn (
+         "$p/slicer/$conf{slicer}/base.ini",
+         ) {
+         my $c = readSlicerConf($fn);
+         foreach my $k (sort keys %$c) {
+            $gc{$k} = $c->{$k};
+            print "$fn: $k = $gc{$k}\n" if($conf{verbose}>1);
+         }
+      }
+      foreach my $k (keys %gc) {          # -- transfer settings to $printer
+         #$conf{$k} = $gc{$k} unless(defined $conf{$k});
+         $printer->{$k} = $gc{$k};
+      }
+      $map = readSlicerConf("$p/slicer/$conf{slicer}/map.ini") if(-e "$p/slicer/$conf{slicer}/map.ini");
+   }
+}
+
+# -- process '--printer' setting
+if($conf{printer}) {
+   my $done;
+
+   # -- complex strategy:
+   #     1) merge all data
+   #     2) consider 'default.ini' regardless for sane base **slicer-independent** settings
+   #     3) gather printer specifics 
+
+   print "$me: combine printer profile:\n" if($conf{verbose});
+   
+   foreach my $p (reverse @paths) {    # -- **commulative merge** of data /usr/share/print3r goes FIRST
+
+      foreach my $p2 (".",'printer',"slicer/$conf{slicer}") {               # -- non-slicer and slicer-depending printer settings
+
+         print "$me: ... $p/$p2\n" if($conf{verbose});
+
+         foreach my $pr ('default',$conf{printer}) {
+            if(-e "$p/$p2/$pr.ini") {                # -- printer profile linked, extract useful information
+               print "$me: loading <$p/$p2/$pr> printer profile\n" if($conf{verbose});
+               my $c = readSlicerConf("$p/$p2/$pr.ini");
+
+               if($c->{machine_width} && $c->{machine_height} && $c->{machine_depth}) {
+                  ($printer->{build}->{x},$printer->{build}->{y},$printer->{build}->{z}) = ($c->{machine_width},$c->{machine_depth},$c->{machine_height});
+               } elsif($c->{bed_shape}) {
+                  my(@co) = split(/,/,$c->{bed_shape});
+                  ($printer->{build}->{x},$printer->{build}->{y}) = split(/x/,$co[2]);
+               }
+
+               foreach my $k (sort keys %$c) {        # -- merge data into conf
+                  # -- override conf but not if 'cli' defined it already
+                  if(!defined $conf{$k} || !defined $conf_src{$k} || $conf_src{$k}eq'printer') {
+                     if($c->{$k}=~/\$\{\w+\}/||$c->{$k}=~/\$\w+/) {    # -- any variable to replace?
+                        $c->{$k} =~ s/\$\{(\w+)\}/defined $conf{$1} ? $conf{$1} : "\${$1\}" /eg;   # -- only replace if variable is known
+                        $c->{$k} =~ s/\$(\w+)/defined $conf{$1} ? $conf{$1} : "\$$1" /eg;          # -- only replace if variable is known
+                     }
+                     $conf{$k} = $c->{$k}, $conf_src{$k} = 'printer';
+                     $conf_ch{$k}++;
+                  }
+               }
+               foreach my $k (sort keys %conf) {     # -- transfer command-line args to slicer config
+                  next if($internOption{$k});
+                  $c->{$k} = $conf{$k};
+               }
+               foreach my $k (sort keys %$c) {       # -- transfer slicer config to printer settings (slicer independent - hopefully)
+                  $printer->{$k} = $c->{$k};
+               }
+               $done++ if($conf{printer}eq'default' || $pr ne 'default');  # -- if printer is defined, count only non-default entries
+            }
+         }
+      }
+   }
+   if(!$done) {
+      error("<$conf{printer}> settings not found, abort");
+   }
+}
+
+# -- evaluate macros (e.g. "@thin")
+my @a;
+foreach(@f) {
+#while($_ = shift(@f)) {
+   if(/^@([\w\-\+\/]+)/) {         # -- evaluate macros
+      my $m = $1;
+      my $done;
+      foreach my $d (@paths) {
+         if(-e "$d/macro/$m.ini") {
+            print "$me: eval macro $d/macro/$m\n" if($conf{verbose});
+            push(@{$process->{macros}},"$d/macro/$m");
+            open(my $fh,"<","$d/macro/$m.ini");                # -- let's read in order (readSlicerConf() would work, but returns unordered structure)
+            while(<$fh>) {
+               chop;
+               s/#.*$//;         # -- remove comments
+               s/\s*$//;         # -- remove trailing spaces
+               my($k,$v);
+               if(/^([\w\-\.]+)\s*$/) {
+                  $k = $1;
+                  my $k_ = $k; $k_ =~ s/\-/_/g;                               # -- printer has - => _ (yes, confusing)
+                  $conf_ch{$k_}++, $conf{$k_} = '\1', $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');   # -- cli options superceed macros
+                  next;
+               } elsif(/^([\w\-\/]+)\s*=\s*"([^"]+)"/||/^([\w\-\.]+)\s*=\s*(\S.*)\s*$/) {
+                  $k = $1, $v = $2, $k =~ s/\-/_/g, $v = evalExpr($v);         # -- options in macro _ => -
+                  my $k_ = $k; $k_ =~ s/\-/_/g;                               # -- printer has - => _ (yes, confusing)
+                  $conf_ch{$k_}++, $printer->{$k_} = $conf{$k_} = $v, $conf_src{$k_} = 'macro:'.$m if((!defined $conf{$k_}) || $conf_src{$k_}eq'printer');  # -- cli options superceed macros
+                  next;
+               }
+            }
+            close $fh;
+            $done++;
+         }
+      } 
+      if(!$done) {
+         error("settings <$m> not found in any of (@paths), abort");
+      }
+
+   } else {
+      push(@a,$_);
+   }
+}
+@f = @a;
+
+my $cmd = shift(@f);
+
+if(-f $cmd) {  # -- is it a file? => missing any command?
+   unshift(@f,$cmd);       # -- let's assume to print and put it back
+   $cmd = 'print';
+   print "$me: WARN: missing <command> (print, slice, preview, render, etc), therefore <print> is assumed\n";
+}
+
+my @f_in = @f;             # -- preserve original file list
+
+if($conf{verbose}) {
+   print "$me: conf from command-line and macros: ".toJSON(\%conf);
+   print "$me: command: '$cmd'\n";
+   print "$me: files: @f\n";
+}   
+
+$SIG{INT} = sub {
+   cleanup();
+   exit -1;
+};
+
+if($conf{prepend_gcode}) {
+   $conf{start_gcode} .= "\n";
+   foreach my $l (split(/(\\n|;)/,$conf{prepend_gcode})) {
+      $l =~ s/\$(\w+)/$conf{$1}/g;
+      $conf{start_gcode} .= $l."\n";
+   }
+}     
+
+if($cmd eq 'analyze') {          # -- not yet
+   foreach my $fn (@f) {
+      if($fn=~/\.(\w+)$/ && $formats{lc($1)}) {
+         my $i = partRead($fn);
+         if($i) {
+            if($conf{verbose}) {
+               print toJSON($i);    # -- dump entire file
+            } else {
+               print "$fn:\n";
+               print "   size: ",toJSON($i->{size},{pretty=>0}),"\n";
+               print "   pos: ",toJSON($i->{min},{pretty=>0}),"\n";
+               print "   vertices: ",scalar @{$i->{vertices}},"\n";
+               print "   facets: ",scalar @{$i->{facets}},"\n";
+            }
+         }
+      } else {
+         print "$me: WARN: file-format not supported: <$fn>, only ",join(", ",sort keys %formats),"\n";
+      }
+   }
+
+} elsif($cmd eq 'slice') {
+   header();
+   foreach my $fn (@f) {
+      $conf{output} = $fn, $conf{output} =~ s/\.\w+$/.gcode/, $conf{output} .= $conf{output}=~/\.gcode$/i? "" : ".gcode" if(!defined $conf{output});
+      if($fn=~/\.scad$/i || $conf{scad} || $fn=~/^#scad\s*/) {
+         my $c_fn = $conf{output};
+         $conf{output} = "/tmp/print3r-$$.stl";
+         scadToSTL($fn,\%conf);
+         $fn = $conf{output};
+         $conf{output} = $c_fn;
+         push(@rm,$fn);
+      } elsif($fn=~/\.sccad$/i || $conf{sccad} || $fn=~/^#sscad\s*/) {
+         my $c_fn = $conf{output};
+         $conf{output} = "/tmp/print3r-$$.stl";
+         sccadToSTL($fn,\%conf);
+         $fn = $conf{output};
+         $conf{output} = $c_fn;
+         push(@rm,$fn);
+      } elsif($fn=~/\.(fcstd|iges|step|brep)$/i) {
+         my $c_fn = $conf{output};
+         $conf{output} = "/tmp/print3r-$$.stl";
+         fcstdToSTL($fn,\%conf);
+         $fn = $conf{output};
+         $conf{output} = $c_fn;
+         push(@rm,$fn);
+      } elsif($fn=~/\.5mf$/i) {
+         $conf{slicer} = '5dmaker' unless($conf_ch{slicer});
+      }
+      slicePart($fn,\%conf);
+      my $fno = processGcode($conf{output});
+      rename($fno,$conf{output}) if($fno ne $conf{output});
+   }
+   
+} elsif($cmd eq 'print' || $cmd eq 'render' || $cmd eq 'preview') {
+   header();
+   my(@fx);
+   my $o = $conf{output};     # -- preserve original setting
+   
+   my $n = 0;
+   BACK:
+   foreach my $fn (@f) {
+      $o = $fn, $o =~ s/\.\w+$/.png/ unless($o);
+
+      if($fn=~/\.scad$/i || $conf{scad} || $fn=~/^#scad\s*/) {
+         $conf{output} = "/tmp/print3r-$$-$n.stl";
+         scadToSTL($fn,\%conf);
+         $fn = $conf{output};
+         push(@rm,$fn);
+      } elsif($fn=~/\.sccad$/i || $conf{sccad} || $fn=~/^#scad\s*/) {
+         $conf{output} = "/tmp/print3r-$$-$n.stl";
+         sccadToSTL($fn,\%conf);
+         $fn = $conf{output};
+         push(@rm,$fn);
+      } elsif($fn=~/\.(fcstd|iges|step|brep)$/i) {
+         my $c_fn = $conf{output};
+         $conf{output} = "/tmp/print3r-$$.stl";
+         fcstdToSTL($fn,\%conf);
+         $fn = $conf{output};
+         $conf{output} = $c_fn;
+         push(@rm,$fn);
+      } elsif($fn=~/\.5mf$/i) {
+         $conf{slicer} = '5dmaker' unless($conf_ch{slicer});
+      }
+
+      if($fn=~/\.(\w+)$/ && ($formats{lc($1)} && !$slicer->{$conf{slicer}}->{formats}->{lc($1)})) {   # -- conversion needed for slicer?
+         my $fmt = lc $1;
+         my $p = partRead($fn);
+         my $tmp = "/tmp/print3r-extra-$$-$n.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
+         partWrite($tmp,$p);
+         $fn = $tmp;
+         push(@rm,$tmp);
+      }
+      
+      if($fn=~/\.(\w+)$/ && $formats{lc($1)}) {
+         #$conf{output} = "/tmp/print3r-$$-$n.gcode";
+         #slicePart($fn,\%conf);
+         #$fn = $conf{output};
+         #push(@rm,$fn);
+         push(@fx,$fn);                # -- we gather all parts (.stl,.amf,.obj, etc)
+
+      } elsif($fn=~/\.gcode$/i) {      # -- already .gcode, we print direct
+         if($cmd eq 'render') {
+            $conf{output} = $fn, $conf{output} =~ s/\.\w+$/.png/;
+            $conf{output} = $o if(defined $o);
+            renderGcode($fn,\%conf);
+         } elsif($cmd eq 'preview') {
+            print "$me: launch gcode viewer ($conf{gviewer})\n" unless($conf{quiet});
+            if(fork()==0) {
+               exec($conf{gviewer},$fn);
+            }
+            wait;
+         } else {
+            printGcode($fn,\%conf);
+         }
+      } elsif($fn=~/^#(\d+)$/) {       # -- reference past print job
+         logReference($1);
+         goto BACK;
+         
+      } else {
+         print "$me: WARN: file-format not supported: <$fn>, only scad, sccad, ",join(", ",sort keys %formats),", gcode\n";
+      }
+      $n++;
+   }
+   if(@fx) {                           # -- slice all parts together and print then
+      my $fn = $conf{output} = "/tmp/print3r-$$.gcode";
+      slicePart(\@fx,\%conf); 
+      push(@rm,$fn);
+      if($cmd eq 'render') {
+         if(defined $o) {
+            $conf{output} = $o;
+         } else {
+            $conf{output} = $fn;
+         }
+         $conf{output} =~ s/\.[^\/\.]$/.png/;
+         renderGcode($fn,\%conf);
+      } elsif($cmd eq 'preview') {
+         print "$me: launch gcode viewer ($conf{gviewer})\n" unless($conf{quiet});
+         if(fork()==0) {
+            exec($conf{gviewer},$fn);
+         }
+         wait;
+      } else {
+         printGcode($fn,\%conf);
+      }
+   }
+   
+} elsif($cmd eq 'gcode') {
+   my $tmp = "/tmp/print3r-$$.gcode";
+   open(my $fh,">",$tmp);
+   print $fh "G4 S1\n";    # -- wait 1 sec, required for Marlin otherwise following commands go nowhere
+   foreach (@f) {
+      s/\\n/\n/g;
+      print $fh $_."\n";
+   }
+   print $fh "G4 S1\n";    # -- wait 1 sec at the end
+   print join("\n",@f)."\n" if($conf{verbose});
+   close $fh;
+   
+   printGcode($tmp,\%conf);
+   unlink $tmp;
+   
+} elsif($cmd eq 'gconsole') {
+   $| = 1;
+   print "== $NAME $VERSION: Gcode Console ($cmd) - use CTRL-C or 'exit' or 'quit' to exit\n";
+   print "   for valid Gcode see https://reprap.org/wiki/G-code\n";
+   print "conf: device $conf{device}, ";
+
+   my $com = openSerial($conf{device});
+
+   my $cpath;           # -- find slicer base settings; cpath contains path
+   foreach my $p (reverse @paths) {
+      $cpath = $p, last if(-e "$p/gconsole");
+   }
+   print "$me: commands found at $cpath\n" if($conf{verbose} && $cpath);
+   
+   if(!eval { require Term::ReadLine }) {
+      error("missing requirement Term::ReadLine::Gnu perl module, rerun `make requirements` from the installation directory");
+   }
+   
+   my $t = new Term::ReadLine($me);
+   #$t->bind_key(ord "\cc", 'abort');
+   
+   print "connected\n";
+   while(1) {
+      my $ln;
+      if(0) {
+         print "> ";
+         $ln = readline(STDIN);
+      } else {
+         $ln = $t->readline(">",' ');     # -- supports history (cursor-down/up) 
+      }
+      my($cmd,$v) = gconsole($ln,$com,$cpath);
+      foreach my $l (split(/\n/,$cmd)) {
+         print "send <$l>\n" if($v || $conf{verbose});
+         printerSend($com,$l."\n");
+         my($resp) = printerResponse($com,$cmd);
+         print "-----\n$resp.\n";
+      }
+   }
+      
+} elsif($cmd eq 'client') {
+   my $fn = "/tmp/print3r-client-$$.cfg";
+   if(!-e $conf{device}) {
+      error("can't open $conf{device} for remote access: $!");
+   }
+   if(!which('ser2net')) {
+      error("ser2net not found or installed");
+   }
+   if(open(my $fh,">",$fn)) {
+      my $p = 3380;
+      my $pp = 0;
+      
+      $pp = $1*1, $p += $pp if($conf{device}=~/(\d+)$/);
+      print $fh "$p:raw:600:$conf{device}:$conf{baudrate} 8DATABITS NONE 1STOPBIT -XONXOFF LOCAL -RTSCTS\n";
+      close $fh;
+
+      push(@rm,$fn);
+
+      if(fork()==0) {
+         exec("ser2net","-n","-c",$fn);
+      }
+      if(!$conf{quiet}) {
+         print "$me: client started, use `--device=tcp:$ENV{HOST}:$pp` to connect\n";
+         print "$me: use CTRL-C to kill/end gateway\n";
+         print "$me: NOTE: anybody on your local network has the capability to access and \n$me:   control this printer; it is YOUR RESPONSIBILITY to secure \n$me:   your local network from unauthorized use of your printer(s)\n";
+      }
+      wait;
+      
+   } else {
+      error("couldn't start ser2net job");
+   }
+   
+} elsif($cmd eq 'log') {
+   my $fn = "$ENV{HOME}/.print3r/log.json";
+   open(my $fh,"<",$fn);
+   if(0 && (stat($fn))[7]>3000) {
+      seek($fh,-2000*50,2);
+   }
+   my $sum;
+   my $no = 1;
+   my(@ma);
+   my $disp = sub {
+      my($js,$no) = @_;
+      my $d = eval { from_json($js) };
+      if($d && ref($d) eq 'HASH') {
+         print to_json($d,{pretty=>1, canonical=>1}) if($conf{verbose} || $conf{format}eq'json');
+         if($conf{format}ne'json') {
+            print "#$no: ";
+            print join(", ",@{$d->{file_list}}).($d->{settings} && $d->{settings}->{multiply_part}?" x $d->{settings}->{multiply_part}":"") if($d->{file_list});
+            my @t = localtime($d->{time});
+            my $dt = time()-$d->{time};
+            print sprintf(": %04d/%02d/%02d %02d:%02d:%02d (%s ago): %d mins printing",$t[5]+1900,$t[4]+1,$t[3],$t[2],$t[1],$t[0],
+               $dt > 60*60*24*365*1.5 ? sprintf("%.1f years",$dt/(60*60*24*365)) : $dt > 60*60*24*30*3 ? sprintf("%d months",$dt/(60*60*24*30)) : sprintf("%d days",$dt/(60*60*24)), $d->{duration}/60);
+            print sprintf(" on <%s>",$d->{settings}->{printer}) if(defined $d->{settings}->{printer});
+            print sprintf(", %.2fm filament",$d->{process}->{filament_used}/1000) if(defined $d->{process}->{filament_used});
+            if($conf{output}) {
+               my $e;
+               foreach my $k (split(/,/,$conf{output})) {
+                  my $v = defined $d->{settings}->{$k} ? $d->{settings}->{$k} : defined $d->{process}->{$k} ? $d->{process}->{$k} : defined $d->{printer}->{$k} ? $d->{printer}->{$k} : $d->{$k};
+                  $e->{$k} = $v if(defined $v);
+               }
+               print ": ".toJSON($e,{pretty=>0}) if($e);
+            }
+            $sum->{filament} += $d->{process}->{filament_used} if($d->{process});
+            $sum->{duration} += $d->{duration};
+            $sum->{jobs}++;
+            print "\n";
+         }
+      }
+   };
+   while(<$fh>) {
+      my $m = 1;
+      if(@f>0) {
+         $m = 0;
+         if($f[0]=~/^#(-?\d+)/) {
+            $m++ if($1 >= 0 && $no == $1);
+            push(@ma,{data=>$_,no=>$no}), @ma > -$1 ? shift(@ma):0 if($1 < 0);
+         } else {
+            $m++, print "match: " if(/$f[0]/i);
+         }
+      }
+      &$disp($_,$no) if($m);
+      $no++;
+   }
+   if(@ma) { 
+      foreach (@ma) {
+         &$disp($_->{data},$_->{no});
+      }
+   }
+   close $fh;
+   print sprintf("== totals: %d jobs, %dm filament, %d days printing\n",$sum->{jobs},$sum->{filament}/1000,$sum->{duration}/60/60/24) if($conf{format}ne'json');
+   exit 0;
+   
+} elsif($cmd eq 'webgui') {
+   webgui();
+   
+} else {
+   #                              slic3r, slic3r-pe, prusa, cura-legacy, cura
+   #                              slicer4rtn, cura-slicer, 5dmaker, kirimoto
+   print "$NAME ($me) $VERSION USAGE: [<options>] <cmd> <file1> [<...>]
+
+   options:
+      --verbose or -v or -vv  increase verbosity
+      --quiet or -q           no output except fatal errors
+      --baudrate=<n>          set baudrate, default: $conf{baudrate}
+         -b <n>
+      --device=<d>            set device, default: $conf{device}
+         -d <device>
+      --slicer=<slicer>       set slicer, default: $conf{slicer}
+         -s <slicer>
+                                 ".join(", ",sort keys %$slicer)."
+      --printer=<name>        config of printer, default: $conf{printer}
+         -p <name>
+      --version               display version and exit
+      --output=<file>         define output file for 'slice' and 'render' command
+         -o <file>
+      --scad                  consider all arguments as actual OpenSCAD code (not files)
+      --scadlib=<files>       define OpenSCAD files separated by \",\" or \":\"
+                              by default '$conf{scadimport} <file>', change with --scadimport=include
+      --prepend-gcode=...     add manually start-gcode
+      --layer-gcode=...       insert gcode at layer change
+      --display_update=off    turn built-in display updates off
+      --post_<stage>=...      define a post-processing stage (use '%i' input file, '%o' output file)
+      --post=<stage>[,<stage>]  apply post-processing stage(s)
+      part preprocessing:
+         --random-placement   place print randomly on the bed
+         --auto-center        place print in the center
+         --multiply-part=<n>  multiply part(s)
+            --rows=<n>           define rows for multiplied parts
+            --cols=<n>           define cols for multiplied parts
+         --scale=<x>,<y>,<z>     scale part x,y,z (absolute if 'mm' is appended)
+         --scale=<f>             scale part f,f,f
+         --rotate=<x>,<y>,<z>    rotate x,y,z
+         --translate=<x>,<y>,<z> translate x,y,z
+         --mirror=<x>,<y>,<z>    mirror x,y,z (0=keep, 1=mirror)
+      --uid=<id>              define part unique id (default: auto generated uid)
+      --<key>=<value>         include any valid slicer option (e.g. slic3r --help)
+
+   commands:
+      print <file> [...]      print (convert & slice & print) part(s) (".join(', ',sort keys %formats).")
+      slice <file> [...]      slice file(s) to gcode (same formats as 'print')
+      preview <file> [...]    slice & preview (same formats as 'print')
+      render <file> [...]     render an image (use '--output=sample.png' or so)
+      gcode <code1> [...]     send gcode lines
+      gconsole                start gcode console
+      client                  map USB connected printer to network (per device)
+      log [<term>|<#num>]     list log of finished prints, use -v for details or --format=json to dump JSON
+                                 use --output=<k>[,<k1>] to list particular keys
+                                 if num is negative, the last entries are shown, e.g. '#-5'
+      help
+   
+   examples:
+      export PRINT3R \"printer=my_printer\" --OR-- setenv PRINT3R \"printer=my_printer\"
+      $me slice cube.stl
+      $me --layer-height=0.2 -o test.gcode slice cube.stl
+      $me -p ender3 -d /dev/ttyUSB1 print test.gcode
+      $me -p corexy -d /dev/ttyUSB2 --layer-height=0.3 --fill-density=0 print cube.stl
+      $me -p ender3 -d tcp:192.168.0.2 --layer-height=0.25 print cube.stl
+      $me print cube.scad
+      $me print parametric.scad --scad.A=20 --scad.B=30
+      $me --scad print \"cube(20)\"
+      $me --scad print \"cube(a)\" --scad.a=20
+      $me log
+      $me --output=uid,layer_height log cube
+      $me log -v '#12'
+      $me gcode 'G28 X Y' 'G1 X60' 'G28 Z'
+      $me gconsole
+      == Print3r: Gcode Console (gconsole) - use CTRL-C or 'exit' or 'quit' to exit
+         for valid Gcode see https://reprap.org/wiki/G-code
+         conf: device /dev/ttyUSB0, connected
+      > M115
+      ...
+
+";
+}   
+
+cleanup();
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub internOption {
+   my($k) = @_;
+   return 1 if($internOption{$k});
+   return 1 if($k=~/^--scad\./);
+   return 0;
+}
+
+sub error {
+   print STDERR "\n$me: ERROR: $_[0]\n";
+   cleanup();
+   exit -1;
+}
+
+sub header {
+   if(!$conf{quiet}) {
+      print "== $NAME $VERSION == https://github.com/Spiritdude/Print3r\n";
+      print "$me: conf: device $conf{device}";
+      print ", $conf{machine_name}" if($printer->{machine_name});
+      print ", build/v $printer->{build}->{x}x$printer->{build}->{y}x$printer->{build}->{z}mm";
+      print ", nozzle/d $printer->{nozzle_diameter}mm" if($printer->{nozzle_diameter});
+      print ", layer/h $printer->{layer_height}mm" if($printer->{layer_height});
+      print ", filament/d $printer->{filament_diameter}mm" if($printer->{filament_diameter});
+      print "\n";
+      
+   }
+}
+
+sub cleanup {
+   print "$me: cleanup\n" if($conf{verbose});
+   if($conf{keep}) {
+      print "INFO: @rm files kept for debugging\n";
+   } else {
+      unlink @rm if(@rm);
+   }
+   @rm = ();
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub scadToSTL {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   my $fno;
+   
+   if($conf{scad} || $fn=~s/^#scad\s*//) {       # -- any code to execute as well? $fn isn't a filename but code itself
+      my $tmp = "/tmp/$me-$$-exec.scad";
+      open(my $fh,">",$tmp) || error("can't create <$tmp>: $!");
+      foreach my $l (split(/[,\:]/,$conf{scadlib})) {
+         $l = cwd()."/".$l unless($l =~ /^\//);
+         print $fh "$conf{scadimport} <$l>\n";
+      }
+      $fno = $fn;
+      $fn .= ";" unless($fn=~/;\s*$/);
+      print $fh $fn;
+      close $fh;
+      push(@rm,$tmp);
+      $fn = $tmp;
+   }
+   
+   if(fork()==0) {
+      $conf{output} = $fn, $conf{output} =~ s/.\w+$/.stl/ unless($conf{output});
+      unlink $conf{output};
+      my(@a) = ('openscad');
+      foreach my $k (sort keys %conf) {
+         push(@a,"-D","$1=$conf{$k}") if($k =~ /^scad\.(\w+)/);
+      }
+      push(@a,'-o',$conf{output},$fn);
+      unless($conf{verbose}) {
+         close STDOUT;
+         close STDERR;
+      }
+      exec(@a);
+   }
+   unless($conf{quiet}) {
+      if($conf{scad}) {
+         print "$me: scad to stl: '$fno'";
+         print " with libraries: $conf{scadlib}" if($conf{scadlib});
+      } else {
+         print "$me: scad to stl: <$fn>";
+      }
+   }
+   wait();
+   if($?) {
+      print "\n$me: openscad: ERROR (bad options/arguments?)\n";
+   } else {
+      print ", done.\n" unless($conf{quiet});
+   }
+}
+
+sub sccadToSTL {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   my $fno;
+   
+   if($conf{sccad} || $fn=~s/^#sscad\s*//) {       # -- any code to execute as well? $fn isn't a filename but code itself
+      my $tmp = "/tmp/$me-$$-exec.sccad";
+      open(my $fh,">",$tmp) || error("can't create <$tmp>: $!");
+      foreach my $l (split(/[,\:]/,$conf{sccadlib})) {
+         print $fh "include('$l');\n";
+      }
+      $fno = $fn;
+      $fn .= ";" unless($fn=~/;\s*$/);
+      print $fh $fn;
+      close $fh;
+      push(@rm,$tmp);
+      $fn = $tmp;
+   }
+   
+   if(fork()==0) {
+      $conf{output} = $fn, $conf{output} =~ s/.\w+$/.stl/ unless($conf{output});
+      unlink $conf{output};
+      my(@a) = ('scriptcad','--merge','-o',$conf{output},$fn);
+      unless($conf{verbose}) {
+         close STDOUT;
+         close STDERR;
+      }
+      exec(@a);
+   }
+   unless($conf{quiet}) {
+      if($conf{sccad}) {
+         print "$me: sccad to stl: '$fno'";
+         print " with libraries: $conf{sccadlib}" if($conf{sccadlib});
+      } else {
+         print "$me: sccad to stl: <$fn>";
+      }
+   }
+   wait();
+   if($?) {
+      print "\n$me: scriptcad: ERROR (bad options/arguments?)\n";
+   } else {
+      print ", done.\n" unless($conf{quiet});
+   }
+}
+
+sub fcstdToSTL {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   my $fno;
+   
+   if(fork()==0) {
+      $conf{output} = $fn, $conf{output} =~ s/.\w+$/.stl/ unless($conf{output});
+      unlink $conf{output};
+      my(@a) = ('freecad2any','-o',$conf{output},$fn);
+      unless($conf{verbose}) {
+         close STDOUT;
+         close STDERR;
+      }
+      exec(@a);
+   }
+   print "$me: freecad to stl: <$fn>" unless($conf{quiet});
+   wait();
+   if($?) {
+      print "\n$me: freecad2any: ERROR (bad options/arguments?)\n";
+   } else {
+      print ", done.\n" unless($conf{quiet});
+   }
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub readSlicerConf {
+   my($fn) = @_;
+   my $i;
+   my $n = 0;
+
+   if(open(my $fh,"<",$fn)) {
+      my $kl;
+      while(<$fh>) {
+         if($n==0 && /^{/) {       # -- is it JSON?
+            local $/;              # -- read next in one go (not line-wise)
+            $_ .= <$fh>;
+            return fromJSON($_);
+         }
+         chop;
+         s/^\s*#.*$//;      # -- remove comments
+         s/\s*$//;          # -- remove trailing spaces
+         next if(/^\s*#/);  
+         next if(/^\s*$/);
+         my($k,$v);
+         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $i->{$k} = $v, $kl = $k, next if(/^([\w\-\.]+)\s*=\s*"([^"]*)"/);  # -- cura-like
+         ($k,$v) = ($1,$2), $k =~ s/\-/_/g, $v =~ s/\\n/\n/g, $v =~ s/#.*$//, $i->{$k} = $v, $kl = $k, next if(/^([\w\-\.]+)\s*=\s*(\S.*)$/);    # -- slicer-like
+         if($kl && /^(\t| {3,})(\S.*)/) {    # -- multi-line setting
+            $v = $2;
+            if($v=~/"([^"]+)"/) {
+               $v = $1;
+            } else {
+               $v =~ s/#.*$//;
+            }
+            $v =~ s/\\n/\n/g;
+            $i->{$kl} .= $v;
+            next;
+         }
+         $n++;
+      }
+      close $fh;
+   }
+   return $i;
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub remap { 
+   my($c) = @_;
+   my $cn = { };
+   my $done;
+
+   print "$me: conf premap: ",toJSON(\%conf) if($conf{verbose}>1);
+   
+   foreach my $k (sort keys %$map) {      # 1. apply all mapping
+      my $expr = $map->{$k};
+      my $vars = $map->{$k};
+      my %undef;
+
+      if(1) {
+         while($vars =~ s/\$(\w+)//) {       # -- sequentially replace variables
+            my $kx = $1;
+            if(defined $conf{$kx}) {
+               $expr =~ s/\$(\w+)/$conf{$kx}/;     # -- replace in expr
+            } else {
+               $undef{$kx}++                   # -- remember undefined variables
+            }
+         }
+   
+         if(keys %undef) {
+            print "\n$me: WARN: ",join(', ',sort keys %undef)," is undefined but required for expression '$k=$map->{$k}'\n";
+            $cn->{$k} = $c->{$k};
+         } else {
+            my $v = $expr; 
+            $v =~ s/\{([^}]+)\}/eval($1)/eg;
+            if($@) {
+               print STDERR "\n$me ERROR: in evaluation of $k = '$expr': $@\n";
+            }
+            $cn->{$k} = $v;
+            $done->{$k}++;
+         }
+      }
+   }
+   foreach my $k (sort keys %$c) {     # -- 2. transfer non-mapped variables
+      unless($done->{$k}) {
+         my $v = defined $conf{$k} ? $conf{$k} : $c->{$k};
+         $v =~ s/{([^}]+)\}/eval($1)/eg;
+         $cn->{$k} = $v;
+      }
+   }
+   print "$me: map & conf postmap: ",toJSON([$map,$cn]) if($conf{verbose}>1);
+   return $cn;
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub renderScad {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+
+   if(!$fn=~/\.scad$/i) {
+      print "$me: WARN: you can only render .scad files but not <$fn>\n";
+   }
+   if(fork()==0) {
+      $conf{output} = "sample.png" unless($conf{output});
+      unless($conf{verbose}) {
+         close STDERR;
+         close STDOUT;
+      }
+      unlink $conf{output};
+      exec("openscad","-o",$conf{output},"--imgsize=512,512",$fn);
+   }
+   print "render png: ";
+   wait();
+   if($?) {
+      print "openscad: ERROR (bad options/arguments?)\n";
+   } else {
+      print "done.\n" unless($conf{quiet});
+   }
+}
+
+sub renderSTL {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+
+   if(!$fn=~/\.stl$/i) {
+      print "$me: WARN: you can only render .stl files but not <$fn>, skipped\n";
+      return;
+   }
+   my $tmp = "./print3r-$$.stl";
+   if(fork()==0) {
+      $conf{output} = $fn, $fn =~ s/\.\w+$/.png/ unless($conf{output});
+      if(open(my $fh,">",$tmp)) {
+         print $fh "import(\"$fn\");\n"; 
+         close $fh;
+         unless($conf{verbose}) {
+            close STDERR;
+            close STDOUT;
+         }
+         unlink $conf{output};
+         exec("openscad","-o",$conf{output},"--imgsize","512,512",$tmp);
+      }
+   }
+   print "render stl: " unless($conf{quiet});
+   wait();
+   unlink $tmp;
+   if($?) {
+      print "\n$me: openscad: ERROR (bad options/arguments?)\n";
+   } else {
+      print "done.\n" unless($conf{quiet});
+   }
+}
+
+sub _moveTo {
+   my($p) = @_;
+   print "$p->{x} $p->{y} $p->{z}\n";
+}
+
+sub _printTo {
+   my($p) = @_;
+   print "$p->{x} $p->{y} $p->{z}\n";
+}
+
+sub _3dto2d {
+   my($p,$pe,$im,$view) = @_;
+   my($x,$y);
+   my $loc;
+   
+   unless($view) {
+      $view->{x} = $printer->{build}->{x} / 2;
+      $view->{y} = -$printer->{build}->{y} * 1.5;
+      $view->{z} = $printer->{build}->{z} * 0.8;
+   }
+   
+   $loc->{x} = 0;
+   $loc->{y} = 0;
+   $loc->{z} = 0;
+   
+   if($pe eq 'side') {
+      $x = $p->{y}*$im->{width}/$printer->{build}->{y};
+      $y = $im->{height} - $p->{z}*$im->{height}/$printer->{build}->{z};
+   } elsif($pe eq 'front') {
+      $x = $p->{x}*$im->{width}/$printer->{build}->{x};
+      $y = $im->{height} - $p->{z}*$im->{height}/$printer->{build}->{z};
+   } elsif($pe eq 'top') {
+      $x = $p->{x}*$im->{width}/$printer->{build}->{x};
+      $y = $im->{height} - $p->{y}*$im->{height}/$printer->{build}->{y};
+   } else {
+      if(1) {
+         my $x_ = $p->{x} - $view->{x} - $loc->{x};
+         my $y_ = $p->{z} - $view->{z} - $loc->{y};
+         my $z_ = $p->{y} - $view->{y} - $loc->{z};
+         $z_ = $z_ / 2;
+         $x = (+($x_ / $z_)) * $im->{width}/2 + $im->{width}/2;
+         $y = (-($y_ / $z_)) * $im->{height}/2 + $im->{height}/2 - 20;     # -- leave some space for version/date
+      } else {
+         $x = $p->{x}*$im->{width}/$printer->{build}->{x} + $p->{z}*$im->{height}/$printer->{build}->{z}/2;
+         $y = $im->{height}-$p->{y}*$im->{height}/$printer->{build}->{y} - $p->{z}*$im->{height}/$printer->{build}->{z}/3;
+      }
+   }
+   ($x+$im->{xoff},$y+$im->{yoff});
+}
+
+sub renderGcode {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+
+   if(!$fn=~/\.gcode$/i) {
+      print "$me: WARN: you can only render .gcode files but not <$fn>, skipped\n";
+      return;
+   }
+   
+   # $fn = processGcode($fn);
+   
+   my $fh;
+   if(!open($fh,"<",$fn)) {
+      error("<$fn> not found, abort.");
+   }
+   
+   seek($fh,4096,-1);         # -- try to parse end of .gcode from slic3r to pick up metadata
+   my $tail;
+   while(<$fh>) {
+      chop;
+      if(/^; filament used = ([\d\.]+)/) {               # -- slic3r*
+         $process->{filament_used} = $1;
+         $tail++;
+      } elsif(/^; filament used \[mm\] = ([\d\.]+)/) {   # -- prusa
+         $process->{filament_used} = $1;
+         $tail++;
+      } elsif($tail && /^; (\w+) = (.*)/) {
+         $printer->{$1} = $2;
+      }
+   }
+   if($printer->{machine_width}) {
+      ($printer->{build}->{x},$printer->{build}->{y},$printer->{build}->{z}) = ($printer->{machine_width},$printer->{machine_depth},$printer->{machine_height});
+   } elsif($printer->{bed_shape}) {
+      ($printer->{build}->{x},$printer->{build}->{y}) = split(/x/,(split(/,/,$printer->{bed_shape}))[2]);
+   }
+
+   use GD;
+
+   print "$me: render: read gcode" unless($conf{quiet});
+   print ", reading <$fn>" if($conf{verbose});
+
+   my($w,$h) = (512+170,512);
+   my $im = new GD::Image($w,$h);
+   my $col;
+
+   $col->{bg} = $im->colorAllocate(255,255,255);
+   $col->{extrusion} = $im->colorAllocate(128,200,128);
+   $col->{box} = $im->colorAllocate(240,240,240);
+   $col->{text} = $im->colorAllocate(128,128,128);
+   $col->{bed} = $im->colorAllocate(200,200,200);
+   $col->{bed_raster} = $im->colorAllocate(210,210,210);
+   $col->{bed_raster2} = $im->colorAllocate(220,220,220);
+   
+   foreach my $r (0..100) {
+      my $n = $im->colorAllocate($r/100*128+60,$r/100*128+127,$r/100*128+60);
+      $col->{depth} = $n unless($col->{depth});
+   }
+
+   my($w0,$h0);
+   my($w1,$h1);
+   my($w2,$h2);
+   my($w3,$h3);
+   
+   if($printer->{build}->{x} >= $printer->{build}->{y}) {
+      $w0 = 512, $h0 = $w0 / $printer->{build}->{x} * $printer->{build}->{y};
+      $w3 = 512, $h3 = $w3 / $printer->{build}->{x} * $printer->{build}->{y};
+   } else {
+      $h0 = 512, $w0 = $h0 / $printer->{build}->{y} * $printer->{build}->{x};
+      $h3 = 512, $w3 = $h3 / $printer->{build}->{y} * $printer->{build}->{x};
+   }
+   if($printer->{build}->{x} >= $printer->{build}->{z}) {
+      $w1 = 512, $h1 = $w1 / $printer->{build}->{x} * $printer->{build}->{z};
+   } else {
+      $h1 = 512, $w1 = $h1 / $printer->{build}->{x} * $printer->{build}->{z};
+   }
+   if($printer->{build}->{y} >= $printer->{build}->{z}) {
+      $w2 = 512, $h2 = $w2 / $printer->{build}->{y} * $printer->{build}->{z};
+   } else {
+      $h2 = 512, $w2 = $h2 / $printer->{build}->{y} * $printer->{build}->{z};
+   }
+
+   my $wx = 171;
+   my $hx = 171;
+
+   # -- beds
+   #$im->rectangle(0,0,$w0,$h0,$col->{bed});
+   $im->setThickness(2);
+   $im->line(512,$h1/3+1,512+$w1/3,$h1/3+1,$col->{bed});
+   $im->line(512,$hx+$h2/3+1,512+$w2/3,$hx+$h2/3+1,$col->{bed});
+   $im->filledRectangle(512+1,$hx*2+1,512+$w2/3-1,$hx*2+$h3/3-1,$col->{bed});
+
+   # -- separating views
+   $im->line(512,0,512,512,$col->{box});
+   $im->line(512,$hx,512+$wx,$hx,$col->{box});
+   $im->line(512,$hx*2,512+$wx,$hx*2,$col->{box});
+
+   $im->setThickness(1);
+   $im->string(gdSmallFont,512+5,5,"front",$col->{text});
+   $im->string(gdSmallFont,512+5,$hx+5,"side",$col->{text});
+   $im->string(gdSmallFont,512+5,$hx*2+5,"top",$col->{text});
+
+   $im->clip(0,0,512,512);
+
+   my $p = new GD::Polygon;   # -- render bed with raster
+   $p->addPt(
+      _3dto2d({x=>0,y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}));
+   $p->addPt(
+      _3dto2d({x=>$printer->{build}->{x},y=>0,z=>0},'perspective',{width=>$w0,height=>$h0}));
+   $p->addPt(
+      _3dto2d({x=>$printer->{build}->{x},y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}));
+   $p->addPt(
+      _3dto2d({x=>0,y=>$printer->{build}->{y},z=>0},'perspective',{width=>$w0,height=>$h0}));
+   $im->filledPolygon($p,$col->{bed});
+
+   for(my $i=0; $i<$printer->{build}->{x}; $i += 10) {
+      my $n = 1;
+      my $c = 'bed_raster';
+      $n = 2, $c = 'bed_raster2' if($i%100==0);
+      for(my $j=0; $j<$n; $j++) {
+         $im->line(
+            _3dto2d({x=>$i,y=>0,z=>0},'perspective',{xoff=>$j,width=>$w0,height=>$h0}),
+            _3dto2d({x=>$i,y=>$printer->{build}->{y},z=>0},'perspective',{xoff=>$j,width=>$w0,height=>$h0}),
+            $col->{$c}
+         );
+      }
+   }                        
+   for(my $i=0; $i<$printer->{build}->{y}; $i += 10) {
+      my $n = 1;
+      my $c = 'bed_raster';
+      $n = 2, $c = 'bed_raster2' if($i%100==0);
+      for(my $j=0; $j<$n; $j++) {
+         $im->line(
+            _3dto2d({x=>0,y=>$i,z=>0},'perspective',{yoff=>$j,width=>$w0,height=>$h0}),
+            _3dto2d({x=>$printer->{build}->{x},y=>$i,z=>0},'perspective',{yoff=>$j,width=>$w0,height=>$h0}),
+            $col->{$c}
+         );
+      }
+   }                        
+   $im->clip(0,0,512+170,512);
+   
+   seek($fh,0,0);             # -- back to the beginning
+   
+   my($p,$lp);
+   
+   foreach my $i (qw(x y z e f)) {
+      $lp->{$i} = $p->{$i} = 0;
+   }
+
+   my($z);
+   
+   my $line = sub {
+      my($n,$p,$x1,$y1,$x2,$y2,$c) = @_;
+      #if(!defined $z->[$n]->{$y1} || $z->[$n]->{$y1} > $p->{y}) {
+         $im->line($x1,$y1,$x2,$y2,$c);
+      #} 
+      #$z->[$n]->{$y1} = $p->{z};
+   };
+   
+   my $fa;
+   
+   $fa++, $process->{filament_used} = 0 unless($process->{filament_used});  # -- filament usage known? if not, recalculate
+   
+   while(<$fh>) {
+      chop;
+
+      #next if(/^;/ || /^\s*$/);
+      #s/;.*$//;
+      s/\*.*$//;
+
+      my($c,$id) = (/^([MG])(\d+)/);
+
+      if($c eq 'G' && ($id == 1 || $id == 0)) {      # -- move or extrude
+         my $px;
+         foreach my $pa (split(/ /)) {
+            $px->{lc($1)} = $2 if($pa=~/([XYZEF])([\d\.]+)/);
+         }
+         foreach my $k (keys %$px) {      # -- update $p
+            $p->{$k} = $px->{$k};
+         }
+         if($px->{e}) {                   # -- move or extrude
+            #_printTo($p);
+            #$im->line($lx,$ly,$x,$y,$col->{extrusion});
+            #$im->line(_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$p->{z}/$printer->{build}->{z}*200+$col->{depth});
+            # -- basic shading based on x/y angle
+            my $c = abs(atan2($lp->{y}-$p->{y},$lp->{x}-$p->{x})) * 3; $c = ($c % 30) / 30 * 100 + $col->{depth};
+            &$line(0,$p,_3dto2d($lp,'perspective',{width=>$w0,height=>$h0}),_3dto2d($p,'perspective',{width=>$w0,height=>$h0}),$c);
+            &$line(1,$p,_3dto2d($lp,'front',{xoff=>512,yoff=>0,width=>$w1/3,height=>$h1/3-1}),_3dto2d($p,'front',{xoff=>512,yoff=>0,width=>$w1/3,height=>$h1/3-1}),$c);
+            &$line(2,$p,_3dto2d($lp,'side',{xoff=>512,yoff=>$hx,width=>$w2/3,height=>$h2/3-1}),_3dto2d($p,'side',{xoff=>512,yoff=>$hx,width=>$w2/3,height=>$h2/3-1}),$c);
+            &$line(3,$p,_3dto2d($lp,'top',{xoff=>512,yoff=>$hx*2,width=>$w3/3,height=>$h3/3-1}),_3dto2d($p,'top',{xoff=>512,yoff=>$hx*2,width=>$w3/3,height=>$h3/3-1}),$c);
+            $process->{filament_used} += abs($lp->{e}-$p->{e}) < 12 ? $p->{e}-$lp->{e} : 0 if($fa);
+
+         } else {
+            #_moveTo($p);
+         }
+         foreach my $k (keys %$p) {
+            $lp->{$k} = $p->{$k};
+         }
+      }
+   }
+   close $fh;
+
+   my $l = 0;
+   my $print = sub {
+      $im->string(gdSmallFont,5,5+$l*15,$_[0],$col->{text});
+      $l++;
+   };
+   $im->clip(0,0,512,512);
+   &$print(sprintf("%15s %s","part".(@f_in>1?"s":""),join(' ',@f_in)));
+   &$print(sprintf("%15s %.fx%.fx%.fmm",'build',$printer->{build}->{x},$printer->{build}->{y},$printer->{build}->{z}));
+   &$print(sprintf("%15s %.2fmm",'nozzle/d',$printer->{nozzle_diameter})) if($printer->{nozzle_diameter});
+   &$print(sprintf("%15s %.2fmm",'layer/h',$printer->{layer_height})) if($printer->{layer_height});
+   &$print(sprintf("%15s %.2fmm",'filament/d',$printer->{filament_diameter})) if($printer->{filament_diameter});
+   &$print(sprintf("%15s %.2fm",'filament used',$process->{filament_used}/1000)) if($process->{filament_used});
+   &$print(sprintf("%15s %s%s",'slicer',$conf{slicer},$process->{time}->{slice}?sprintf(" (%dm %ds)",int($process->{time}->{slice}/60),$process->{time}->{slice}%60):""));
+   
+   $im->string(gdSmallFont,15,512-15,"$NAME $VERSION",$col->{bed});
+   @_ = localtime();
+   $im->string(gdSmallFont,512-135,512-15,sprintf("%04d/%02d/%02d %02d:%02d:%02d",$_[5]+1900,$_[4]+1,$_[3],$_[2],$_[1],$_[0]),$col->{bed});
+   
+   print ", write '$conf{output}'" unless($conf{quiet});
+   $conf{output} = $fn, $conf{output} =~ s/\.\w+$/.png/ unless($conf{output});
+   open(my $fh,">",$conf{output});
+   binmode($fh);
+   print $fh $im->png();
+   close $fh;
+
+   print ", done.\n" unless($conf{quiet});
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub slicePart {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+   my $st = time();
+
+   if(!ref($fn) && $fn=~/\.(\w+)$/ && ($formats{lc($1)} && !$slicer->{$conf{slicer}}->{formats}->{lc($1)}) ) {
+      my $p = partRead($fn);
+      my $tmp = "/tmp/print3r-extra-$$.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
+      partWrite($tmp,$p);
+      push(@rm,$tmp);
+      $fn = $tmp;
+   }
+   if(!ref($fn) && $fn=~/\.(\w+)$/ && !$formats{lc($1)}) {
+      my $f = join(", ",keys %formats);
+      print "$me: WARN: you can only slice $f files but not <$fn>, skipped\n";
+      return;
+   }
+   
+   if(1) {     # -- check existence of all file(s)
+      foreach my $f (ref($fn)?@$fn:$fn) {
+         error("cannot slice '$f': file not found") if(!-e $f);
+      }
+   }
+   my $tmp = "/tmp/print3r-$$.gcode";
+   
+   my @a = ($slicer->{$conf{slicer}}->{exe}||$conf{slicer});
+
+   print "$me: slice ($conf{slicer}) part".(ref($fn) && @$fn>1?"s":"")." <".join(", ",ref($fn)?@$fn:$fn)."> to gcode: " unless($conf{quiet});
+   
+   if($conf{scale} || $conf{rotate} || $conf{translate} || $conf{mirror}) {
+      my @fx = ();
+      my $n = 0;
+      foreach my $f (ref($fn)?@$fn:$fn) {
+         print ", " if($n);
+         printf "read %s",$f=~/^\/tmp/?"part":"'$f'" unless($conf{quiet});
+         my $p = partRead($f);
+         $p = partRecenter($p,[1,1,$conf{rotate}?1:-1]);
+         $p = partMirror($p,[split(/,/,$conf{mirror})]) if(defined $conf{mirror});
+         $p = partScale($p,[split(/,/,$conf{scale})]) if(defined $conf{scale});
+         $p = partRotate($p,[split(/,/,$conf{rotate})]) if(defined $conf{rotate});
+         $p = partTranslate($p,[split(/,/,$conf{translate})]) if(defined $conf{translate});
+         $p = partRecenter($p,[0,0,-1]) if($conf{slicer}=~/cura/);    # -- cura needs part to reside z=0
+         printf ", size %.1fx%.1fx%.1f",$p->{size}->[0],$p->{size}->[1],$p->{size}->[2] if($conf{scale} && !$conf{quiet});
+         my $tmp = "/tmp/print3r-$$-0-$n.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
+         partWrite($tmp,$p);
+         push(@fx,$tmp);
+         $n++;
+      }
+      $fn = \@fx;
+      push(@rm,@fx);
+
+   } else {
+      print "prepare" unless($conf{quiet});
+   }
+
+   # -- multiply parts (slic3r supports it built-in, otherwise we have to duplicate & reposition parts)
+   if(!($conf{slicer}=~/(slic3r|prusa|super)/) && $conf{multiply_part}>1 ) {
+      my @pa;
+      foreach my $f (ref($fn)?@$fn:$fn) {
+         push(@pa,partRead($f));
+      }
+      my @fx;
+      my $j = 0;
+      foreach my $p (@pa) {
+         my($w,$h) = ($p->{size}->[0],$p->{size}->[1]);
+         my $p0 = { };
+         my $n = $conf{multiply_part};
+         my $ry = $w / $h;
+         my $xn = $conf{cols} || ($conf{rows} ? int($n / $conf{rows} + 0.5) : int(sqrt($n)) );
+         print ", multiply ${n}x ($xn cols)" unless($conf{quiet});
+         my @pb;
+         foreach my $i (0..$n-1) {
+            my $pn = partTranslate(partRecenter($p,[1,1,0]),[($w+5)*($i%$xn),($h+5)*int($i/$xn),0]);
+            partMerge($p0,$pn);
+         }
+         my $tmp = "/tmp/print3r-$$-ar-$j.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
+         partWrite($tmp,$p0);
+         push(@fx,$tmp);
+         $j++;
+      }
+      $fn = \@fx;
+      push(@rm,@fx);
+   }
+
+   if((!$conf{stick_position}) && !($conf{slicer}=~/(slic3r|prusa|super)/) && ref($fn) && @{$fn} > 1) {        # -- non-slic3r we have to merge/pack now
+      print ", arrange ",scalar @{$fn}," parts" unless($conf{quiet} || @{$fn}==1);
+      my @pa;
+      foreach my $f (@$fn) { 
+         push(@pa,partRead($f));      # -- a bit wasteful, but we don't necessarly have read it already
+      }
+      my $p = partsArrange(@pa,$printer);
+      my $tmp = "/tmp/print3r-$$-ar.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
+      partWrite($tmp,$p);
+      push(@rm,$tmp);
+      $fn = $tmp;                                        # -- back to a single part
+   }
+   
+   # -- replace parts (slic3r supports it built-in, otherwise we have to reposition part(s))
+   if((!($conf{slicer}=~/(slic3r|prusa|super|rtn|mandoline|zplus|5dmaker|lab|vox3l|voxgl)/)) && ($conf{auto_center}||$conf{random_placement})) {
+      my $n = 0;
+      my @fx;
+      foreach my $f (ref($fn)?@$fn:$fn) {
+         my $p = partRead($f);
+         $p = partRecenter($p,[1,1,0]);         # -- required for repositioning
+         my($x,$y);
+         if($conf{random_placement}) {
+            ($x,$y) = ($printer->{build}->{x}*(rand()*0.5+0.5/2),$printer->{build}->{y}*(rand()*0.5+0.5/2));
+            print ", reposition [",int($x),",",int($y),"]" if(!$conf{quiet});
+         } else {
+            ($x,$y) = ($printer->{build}->{x}/2,$printer->{build}->{y}/2);
+         }
+         $x -= $printer->{build}->{x}/2, $y -= $printer->{build}->{y}/2 if($conf{slicer}=~/cura/);    # -- cura assumes 0,0 at center of plate
+         $p = partTranslate($p,[int($x),int($y),0]);
+         my $tmp = "/tmp/print3r-$$-1-$n.".($p->{volumes}?"amf":($slicer->{$conf{slicer}}->{formats}->{obj}?"obj":"stl"));
+         partWrite($tmp,$p);
+         push(@fx,$tmp);
+         $n++;
+      }
+      $fn = \@fx;
+      push(@rm,@fx);
+   }
+
+   my($exit,$out);
+   
+   my $cpath;           # -- find slicer base settings; cpath contains path
+   foreach my $p (@paths) {
+      $cpath = $p, last if(-e "$p/slicer/$conf{slicer}/base.ini");
+   }
+
+   print "$me: main base settings found at [$cpath]/slicer/$conf{slicer}/base.ini\n" if($conf{verbose});
+   
+   print "$me: settings for slicing:\n".toJSON(\%conf)."\n" if($conf{verbose});
+   
+   if($conf{slicer}=~/slic3r/||$conf{slicer}eq'prusa'||$conf{slicer}eq'super') {      # -- slic3r, slic3r-pe, prusa, superslicer
+      # -- compose argument list for slic3r
+      if(1) {
+         # -- note: slic3r and slic3r-pe won't support all settings coming from command line
+         #        solution: we compose a temporary settings file which merges command line options
+         my $tmp = "/tmp/print3r-$$-setting.ini";
+         my $c = readSlicerConf("$cpath/slicer/$conf{slicer}/base.ini");
+
+         $c = remap($c);
+         
+         open(my $fh,">",$tmp);
+         
+         foreach my $k (sort keys %$c) {        # -- write from existing base configuration
+            unless(defined $conf{$k}) {
+               my $d = $c->{$k}; $d =~ s/\n/\\n/g;
+               $d = 1 if($d eq "\\1");
+               $d = ($d*1)."%" if($k eq 'fill_density');    # -- prusa & super are picky
+               print $fh "$k = $d\n" unless($conf{$k});
+            }
+         }
+         
+         foreach my $k (sort keys %conf) {      # -- command line arguments & macros
+            unless(internOption($k)) {
+               my $d = $conf{$k}; $d =~ s/\n/\\n/g;
+               $d = 1 if($d eq "\\1");
+               $d = ($d*1)."%" if($k eq 'fill_density');    # -- prusa & super are picky
+               print $fh "$k = $d\n";
+            }
+         }
+         close $fh;
+         push(@a,'--export-gcode') if($conf{slicer}eq'prusa'||$conf{slicer}eq'super');
+         push(@a,'--load',$tmp);
+         push(@rm,$tmp);
+         #push(@a,'--gcode-comments');
+         push(@a,'--before-layer-gcode=;LAYER:[layer_num]');      # -- make it Cura compatible a bit
+      }
+      if(defined $conf{output}) {
+         unlink $conf{output};
+         push(@a,'--output',$conf{output});
+      } else {
+         push(@a,'--output',$tmp);
+         push(@rm,$tmp);
+      }
+      if($conf{random_placement}) {
+         my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+         # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
+         #          in case there are multiple parts, we don't know how slic3r combines them ...
+         push(@a,$conf{slicer}eq'prusa'||$conf{slicer}eq'super'?'--center':'--print-center',join(",",@pos));
+         print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
+      } elsif($conf{auto_center}) {
+         push(@a,$conf{slicer}eq'prusa'||$conf{slicer}eq'super'?'--center':'--print-center',($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
+      }
+      if(0) {
+         foreach my $k (sort keys %conf) {      # -- likely not needed, since we rewrote temporary config with all setttings
+            next if(internOption($k));
+            if($conf{$k} eq '\1') {
+               push(@a,"--$k");
+            } else {
+               push(@a,"--$k",$conf{$k});
+            }
+         }
+      }
+      if($conf{multiply_part}>1) {
+         push(@a,"--merge");
+         print ", multiply $conf{multiply_part}x" unless($conf{quiet});
+         foreach(1..$conf{multiply_part}) {
+            push(@a,ref($fn)?@$fn:$fn);
+         }
+      } else {
+         if(ref($fn)eq'ARRAY') {
+            push(@a,"--merge") if(@$fn>1);
+            push(@a,@$fn);
+         } else {
+            push(@a,$fn);
+         }
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a);
+   
+   } elsif($conf{slicer}=~/rtn/) {                 # -- slicer4rtn
+      my(%iconf) = (
+         slicer => 'slic3r',
+         mode => 'outside',
+         axis => 4,
+         angle => 45,
+         center => "0,0",
+         bed_center => "100,100",
+         zoff => 0,
+         max_speed => 0,
+         motion_minz => 0.2,
+         erate => 1.0,
+         efmax => 3,
+         efmin => 0.01,
+         inter_steps => 2,
+         subdivide => 2,
+         output => 1,
+         keep => 1,
+         recenter => 1,
+         rot_gcode => 'A',
+         rot_revolv => 1,
+         rot_offset => 0,
+         rot_fixed => 0,
+         tilt_gcode => 'B',
+         layer_height => 0.2,
+         start_gcode => 1,
+         end_gcode => 1
+      );
+      if(1) {
+         my $tmp = "/tmp/print3r-$$-setting.ini";
+         my $c = readSlicerConf("$cpath/slicer/$conf{slicer}/base.ini");
+         $c = remap($c);
+         
+         open(my $fh,">",$tmp);
+         foreach my $k (sort keys %$c) {        # -- write from existing base configuration
+            unless(defined $conf{$k}) {
+               my $d = $c->{$k}; $d =~ s/\n/\\n/g;
+               $d = 1 if($d eq "\\1");
+               print $fh "$k = $d\n" unless(defined $conf{$k} || defined $iconf{$k} || $k =~ /^slicer4rtn\./);
+            }
+         }
+         
+         foreach my $k (sort keys %conf) {      # -- command line arguments & macros
+            unless(internOption($k)) {
+               my $d = $conf{$k}; $d =~ s/\n/\\n/g;
+               $d = 1 if($d eq "\\1");
+               print $fh "$k = $d\n" unless(defined $iconf{$k} || $k =~ /^slicer4rtn\./);
+            }
+         }
+         close $fh;
+         push(@a,"--slicer.load=$tmp");
+         push(@rm,$tmp);
+      }
+      if(defined $conf{output}) {
+         unlink $conf{output};
+         push(@a,"--output=$conf{output}");
+      } else {
+         push(@a,"--output=$tmp");
+         push(@rm,$tmp);
+      }
+      #push(@a,"--slicer=prusa-slicer");
+      if($conf{random_placement}) {
+         my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+         # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
+         #          in case there are multiple parts, we don't know how slic3r combines them ...
+         push(@a,($conf{slicer}eq'prusa'||$conf{slicer}eq'super'?'--center':'--bed-center')."=".join(",",@pos));
+         print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
+      } elsif($conf{auto_center}) {
+         push(@a,($conf{slicer}eq'prusa'||$conf{slicer}eq'super'?'--center':'--bed-center')."=".($printer->{build}->{x}/2).",".($printer->{build}->{y}/2));
+      }
+      foreach my $k (sort keys %conf) {      # -- pass slicer4rtn native args by command line
+         my $k0 = $k;
+         $k =~ s/^slicer4rtn\.//;
+         if(defined $iconf{$k} && $k0 ne 'slicer') {
+            my $k_ = $k;
+            $k_ =~ s/_/-/g;
+            my $v = $conf{$k0};
+            $v =~ s/\n/\\n/g;
+            push(@a,"--$k_=$v") 
+         }
+      }
+      push(@a,"-v") if($conf{verbose});
+      if(ref($fn)eq'ARRAY') {
+         push(@a,"--merge") if(@$fn>1);
+         push(@a,@$fn);
+      } else {
+         push(@a,$fn);
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a);
+   
+   } elsif($conf{slicer}eq'mandoline') {    # -- mandoline
+      if(defined $conf{output}) {
+         unlink $conf{output};
+         push(@a,"-o",$conf{output});
+      } else {
+         push(@a,"-o",$tmp);
+         push(@rm,$tmp);
+      }
+      if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+         while(<$fh>) {
+            chop; 
+            next if(/^\s*#/);
+            if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
+               my($k,$v) = ($1,$2);
+               $v =~ s/\\n/\n/g;
+               push(@a,"-S","$k=$v") unless($conf{$k});
+            }
+         }
+         close $fh;
+      } else {
+         print "$me: WARN: no base.ini found in @paths\n";
+      }
+      my $c;
+      foreach my $k (sort keys %conf) {
+         next if(internOption($k));
+         $c->{$k} = $conf{$k};         # -- just copy
+      }
+      $c = remap($c);
+      foreach my $k (sort keys %$c) {
+         my $v = $c->{$k}; $v =~ s/\\n/\n/g;
+         push(@a,"-S","$k=$v");
+      }
+      if($conf{random_placement}) {
+         my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+         # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
+         #          in case there are multiple parts, we don't know how slic3r combines them ...
+         push(@a,("-S","bed_center_x=$pos[0]","-S","bed_center_y=$pos[1]"));
+         print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
+      } elsif($conf{auto_center}) {
+         push(@a,('-S','bed_center_x='.($printer->{build}->{x}/2),'-S','bed_center_y='.($printer->{build}->{y}/2)));
+      }
+      foreach(1..$conf{verbose}) {
+         push(@a,"-v");
+      }
+      if(ref($fn)eq'ARRAY') {
+         #push(@a,"--merge") if(@$fn>1);
+         push(@a,@$fn);
+      } else {
+         push(@a,$fn);
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a);
+   
+   } elsif($conf{slicer}eq'cura-legacy') {    # -- cura-legacy
+      push(@a,"-v");    # -- verbose
+      #push(@a,'-c',"$cpath/slicer/cura-legacy/base.ini");
+      if(0) {
+         if($conf{random_placement}) {
+            my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+            $conf{'position.X'} = $pos[0];
+            $conf{'position.Y'} = $pos[1];
+            print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
+         } elsif($conf{auto_center}) {
+            $conf{'position.X'} = $printer->{build}->{x}/2;
+            $conf{'position.Y'} = $printer->{build}->{y}/2;
+         }
+      }
+      if($conf{output}) {
+         push(@a,'-o',$conf{output});
+      } else {
+         push(@a,'-o',$tmp);
+         push(@rm,$tmp);
+      }
+      my $c;
+      foreach my $k (sort keys %conf) {
+         next if(internOption($k));
+         $c->{$k} = $conf{$k};         # -- just copy
+      }
+      $c = remap($c);
+      # -- manually add setting temperatures so we don't have to in start/end_gcode to stay flexible
+      $c->{startCode} = "; $NAME $VERSION\nG90\n".$c->{startCode};
+      $c->{startCode} .= "M109 S$c->{temperature}\n" if($c->{temperature});
+      $c->{startCode} .= "M140 S$c->{bed_temperature}\n" if($c->{bed_temperature});
+      foreach my $k (sort keys %$c) {
+         my $v = $c->{$k}; $v =~ s/\\n/\n/g;
+         push(@a,"-s","$k=$v");
+      }
+      if($conf{multiply_part}>1) {
+         foreach(1..$conf{multiply_part}) {
+            foreach(ref($fn)?@$fn:$fn) {
+               push(@a,$_);
+            }
+         }
+      } else {
+         if(ref($fn)eq'ARRAY') {
+            foreach(ref($fn)?@$fn:$fn) {
+               push(@a,$_);
+            }
+         } else {
+            push(@a,$fn);
+         }
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});
+
+   } elsif($conf{slicer}=~/cura/i && $conf{slicer}ne'cura-slicer') {      # -- cura, cura4, cura5 & curax
+      push(@a,"slice");
+      #push(@a,"-p");    # -- progress
+      push(@a,"-v") if $conf{slicer} ne 'cura5';    # -- verbose
+      #push(@a,'-j',"slicers/Cura/resources/definitions/fdmprinter.def.json");
+      push(@a,'-j',"$cpath/slicer/$conf{slicer}/fdmprinter.def.json");
+      #push(@a,'-j',"slicers/Cura/resources/definitions/fdmextruder.def.json");
+      #push(@a,'-j',"slicers/Cura/resources/definitions/prusa_i3.def.json");
+      #push(@a,'-j',$conf{printer}) if($conf{printer});
+      #push(@a,"-g");
+      foreach my $n (0..($conf{extruder_count}||1)-1) {
+         #push(@a,"-e$n");        # -- doesn't work, throws error
+         push(@a,"-s","extruder_nr=$n");
+         my @ks;
+         if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+            while(<$fh>) {
+               chop; 
+               if(/(\w+)="([^"]*)"/||/(\w+)=(\S.*)/) {
+                  my($k,$v) = ($1,$2);
+                  $v =~ s/\\n/\n/g;
+                  push(@a,"-s","$k=$v") unless($conf{$k});
+               }
+            }
+            close $fh;
+         } else {
+            print "$me: WARN: no base.ini found in @paths\n";
+         }
+         my $c;
+         foreach my $k (sort keys %conf) {
+            next if(internOption($k));
+            $c->{$k} = $conf{$k};         # -- just copy
+         }
+         $c = remap($c);
+         foreach my $k (sort keys %$c) {
+            my $v = $c->{$k}; $v =~ s/\\n/\n/g;
+            push(@a,"-s","$k=$v");
+         }
+      }
+      if(ref($fn)eq'ARRAY') {
+         my $n = 0;
+         foreach my $o (ref($fn)?@$fn:$fn) {
+            #push(@a,"-e$n");
+            #push(@a,"-s","extruder_nr=$n"); $n++;
+            push(@a,"-l",$o);
+            # push(@a,'--next');
+         }
+      } else {
+         push(@a,"-l",$fn);
+      }
+      if($conf{output}) {
+         push(@a,'-o',$conf{output});
+      } else {
+         push(@a,'-o',$tmp);
+         push(@rm,$tmp);
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      if($conf{slicer}eq'cura5') {
+         ($exit,$out) = execProgram(@a,{close_stderr=>1,close_stdout=>1,log_stderr=>'/dev/null',log_stdout=>$conf{verbose}<2?'/dev/null':0});
+      } else {
+         ($exit,$out) = execProgram(@a,{close_stderr=>1,log_stderr=>1});  # -- CuraEngine-3.x & 4.x won't like closed/redirected stdout
+      }
+   
+   } else {
+      unless($conf{slicer}=~/(cura-slicer|5dmaker|kirimoto|zplus|lab|vox3l|voxgl|enoch|goslice)/) {
+         print "WARN: slicer '$conf{slicer}' not officially supported, but trying to launch it\n";
+      }
+      if(defined $conf{output}) {
+         unlink $conf{output};
+         push(@a,"-o",$conf{output});
+      } else {
+         push(@a,"-o",$tmp);
+         push(@rm,$tmp);
+      }
+      # -- Note: in general all variables are using _ as spacer, if the slicer reqiures '-' again, make it so (like for `goslice`)
+      if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/base.ini")) {    # -- use some sane settings, we read it sequentially to keep order (!!)
+         while(<$fh>) {
+            chop; 
+            next if(/^\s*#/);
+            if(/([\w\-]+)="([^"]*)"/||/([\w\-]+)=(\S.*)/) {
+               my($k,$v) = ($1,$2);
+               #$v =~ s/\\n/\n/g;
+               $k =~ s/_/-/g if($conf{slicer}eq'goslice');
+               push(@a,"--$k=$v") unless(defined $conf{$k});
+            }
+         }
+         close $fh;
+      } else {
+         print "$me: WARN: no base.ini found in @paths\n";
+      }
+
+      my %strict;
+      if(open(my $fh,"<","$cpath/slicer/$conf{slicer}/strict.ini")) {    # -- has it strict behaviour? only certain settings otherwise fails?
+         while(<$fh>) {
+            chop; 
+            next if(/^\s*#/);
+            if(/^([\w\-]+)/) {
+               $strict{$1}++;
+            }
+         }
+         close $fh;
+      }
+
+      foreach my $k (sort keys %conf) {      # -- pass <slicer>.* native args by command line
+         my $k0 = $k;
+         my $sl = $conf{slicer}; 
+         $sl =~ s/-/_/g;
+         if($k =~ s/^$sl\.//) {
+            my $k_ = $k;
+            $k_ =~ s/_/-/g;
+            my $v = $conf{$k0};
+            $v =~ s/\n/\\n/g;
+            next if(%strict && !defined $strict{$k_});
+            #$k_ =~ s/_/-/g if($conf{slicer}eq'goslice'); # -- done already above
+            push(@a,"--$k_=$v") 
+         }
+      }
+      my $c;
+      foreach my $k (sort keys %conf) {
+         next if(internOption($k));
+         my $v = $conf{$k};
+         $v =~ s/\n/\\n/g unless($conf{slicer}eq'goslice');
+         $v = 1 if($v eq '\1');
+         next if(%strict && !defined $strict{$k});
+         $c->{$k} = $v;         # -- just copy
+      }
+      $c = remap($c);
+      foreach my $k (sort keys %$c) {
+         my $v = $c->{$k}; 
+         $v =~ s/\n/\\n/g unless($conf{slicer}eq'goslice');
+         $v = 1 if($v eq '\1');
+         next if(%strict && !defined $strict{$k});
+         $k =~ s/_/-/g if($conf{slicer}eq'goslice');
+         push(@a,"--$k=$v");
+      }
+      if($conf{random_placement}) {
+         my(@pos) = (int($printer->{build}->{x}*(rand()*0.5+0.5/2)),int($printer->{build}->{y}*(rand()*0.5+0.5/2)));
+         # -- TODO: check if new printer works with size of part (we have to read the part(s) to know its dimension)
+         #          in case there are multiple parts, we don't know how slic3r combines them ...
+         if($conf{slicer}eq'kirimoto') {
+            push(@a,"--bedOrigin=$pos[0],$pos[1]","--outputOriginCenter=true");
+         } elsif($conf{slicer}eq'goslice') {
+            push(@a,"--center=".($pos[0]*1000)."_".($pos[1]*1000)."_0");
+         } else {
+            push(@a,"--bed_center=$pos[0],$pos[1]");
+         }
+         print ", reposition [$pos[0],$pos[1]]" unless($conf{quiet});
+      } elsif($conf{auto_center} && $conf{slicer}ne'goslice') {
+         push(@a,'--bed_center='.($printer->{build}->{x}/2).','.($printer->{build}->{y}/2));
+      }
+      foreach(1..$conf{verbose}) {
+         next if($conf{slicer}eq'goslice');
+         push(@a,"-v");
+      }
+      if(ref($fn)eq'ARRAY') {
+         #push(@a,"--merge") if(@$fn>1);
+         push(@a,@$fn);
+      } else {
+         push(@a,$fn);
+      }
+      print ", slice" unless($conf{quiet});
+      print ", exec: @a\n" if($conf{verbose});
+      ($exit,$out) = execProgram(@a,{close_stdout=>!($slicer->{$conf{'slicer'}}->{stdout}),close_stderr=>1,log_stderr=>1});
+   }
+
+   $process->{time}->{slice} = time()-$st;
+
+   if($out=~/filament (used|required)\s*[=:]\s*([\d\.]+)\s*(\w+)/i) {      # -- cura or slic3r*
+      $process->{filament_used} = $2 * ($3 eq 'm' ? 1000:1);               # -- filament_used [mm] always
+   } elsif($out=~/filament used\s\[mm\]\s=\s([\d\.]+)/i) {      # -- prusa or superslicer
+      $process->{filament_used} = $1;
+   } elsif($out=~/Filament:\s*([\d\.]+)/i) {       # -- cura-legacy
+      $process->{filament_used} = $1;
+   } else {
+      open(my $fh,"<",$conf{output});
+      seek($fh,4096,-1);         # -- try to parse end of .gcode to pick up metadata
+      my $tail;
+      while(<$fh>) {
+         chop;
+         if(/^; filament used = ([\d\.]+)/) {               # -- slic3r*
+            $process->{filament_used} = $1;
+            $tail++;
+         } elsif(/^; filament used \[mm\] = ([\d\.]+)/) {   # -- prusa
+            $process->{filament_used} = $1;
+            $tail++;
+         } elsif(/^;.+filament used\s*[:=]\s*([\d\.]+)/) {   # -- others
+            $process->{filament_used} = $1;
+            $tail++;
+         } elsif($tail && /^; (\w+) = (.*)/) {
+            $printer->{$1} = $2;
+         }
+      }
+      close $fh;
+   }
+   
+   if($exit) {
+      print "\n$a[0]: ERROR (bad options/arguments?)\n";
+      foreach my $l (split(/\n/,$out)) {
+         print "$me: '$l'\n";
+      }
+      exit -1;
+   }
+   if(!-e $conf{output}) {
+      error("slicer [$conf{slicer}] created no gcode, abort.");
+   }
+   printf ", filament usage %.2fm",$process->{filament_used}/1000 if($process->{filament_used} && !$conf{quiet});
+   if(defined $conf{post}) {
+      foreach my $p (split(/,/,$conf{post})) {
+         if(defined $conf{"post_$p"}) {
+            my $tmp = "/tmp/print3r-post-$$.gcode";
+            print ", post ($p)" unless($conf{quiet}||$conf{verbose});
+            my(@cmd) = split(/ +/,$conf{"post_$p"});
+            @cmd = map { $_ =~ s/%i/$conf{output}/; $_ =~ s/%o/$tmp/; $_ } @cmd;
+            print ", exec: @cmd\n" if($conf{verbose});
+            execProgram(@cmd);
+            if(!-e $tmp) {
+               error("post processing '$p' (".$conf{"post_$p"}.") did not create any gcode, abort.");
+            }
+            rename($tmp,$conf{output});
+         } else {
+            print "$me: WARN: post processing '$p' is not defined (post_$p) anywhere, ignored.\n";
+         }
+      }
+   }
+   print ", done.\n" unless($conf{quiet});
+   #($exit,$version) = execProgram($slicer->{$conf{slicer}}->{exe}||$conf{slicer},"--version");  
+}
+
+sub processGcodeLine {
+   my($l) = @_;
+
+   $process->{tool} = $1 if($l=~/^T(\d+)/);
+
+   if($conf{verbose}>1 && !$conf{quiet}) {
+      print "\tprocess:\n";
+      foreach my $k (sort keys %$process) {
+         print "\t\t$k = '$process->{$k}'\n";
+      }
+   }
+   if($l=~/^T\d+/ && $conf{toolmap}) {       # -- only map tool select (but not /M182 T\d+/)
+      if(1) {
+         foreach my $t (split(/,/,$conf{toolmap})) {        # -- simple toolmap
+            my($a,$b,$c) = split(/[:=]/,$t);
+            if($l =~ s/$a/$b/) {
+               print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+               last;             # -- only one replacement
+            }
+         }
+      } else {
+         my %cnt;                                           # -- FUTURE: sophisticated toolmap with conditions ($c = "once" || "always")
+         foreach my $t (split(/,/,$conf{toolmap})) {
+            my($a,$b,$c) = split(/[:=]/,$t);
+            if($l =~ /$a/ && ($c && $c eq 'once' && $cnt{$a} < 1)) {
+               if($l =~ s/$a/$b/) {
+                  print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+                  $cnt{$a}++;
+               }
+            }
+         }
+      }
+   }
+   if($l=~/(^|\n)T\d+/ && $conf{toolremap}) {    # -- additional tool (re)mapping
+      # -- we implement a two step re-mapping, this way the order of mapping doesn't matter
+      my $p = "XX0A";                            # -- pattern which unlikely is used anywhere
+      my $n = 0;
+      my %rep;
+      foreach my $t (split(/,/,$conf{toolremap})) {
+         my($a,$b) = split(/[:=]/,$t);
+         if($l =~ s/$a/$p$n/gm) {
+            #print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+            $rep{$a} = "$p$n";
+            $n++;
+         }
+      }
+      $n = 0;
+      foreach my $t (split(/,/,$conf{toolremap})) {
+         my($a,$b) = split(/[:=]/,$t);
+         if($rep{$a} && $l =~ s/$rep{$a}/$b/gm) {
+            print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+            $n++;
+         }
+      }
+   }
+
+   # -- update various variables (after toolmap & toolremap)
+   foreach (split(/\n/,$l)) {
+      $process->{tool_current} = $process->{tool} = $1 if(/^T(\d+)/);
+   }
+      
+   if($conf{toolchange_gcode}) {
+   }
+
+   # -- short lines but are quite powerful:
+   $l =~ s/\$\{([^\}]+)\}/defined $conf{$1} ? $conf{$1} : $process->{$1}/eg;   # -- replace variables "${var}" forcefully (setting or live variable)
+   $l =~ s/\{([^\}]+)\}/eval($1)/eg;                                           # -- eval expressions "{expr}" forcefully
+   if($@) {
+      print STDERR "$me: WARN: eval in '$l' failed: $@\n";
+   }   
+   $l =~ s/&(\w+)\(([^\)]+)\)/inline_function($1,inline_args("$2"))/eg;    # -- call functions
+   if($@) {
+      print STDERR "$me: WARN: inline function in '$l' failed: $@\n";
+   }   
+   $l =~ s/\\n/\n/g;
+   $l .= "\n" unless($l=~/\n$/);       # -- ensure "\n" at the end (always)
+   return $l;
+}
+
+sub processGcode {     
+   my($fn) = @_;
+
+   if(1 && ($conf{toolmap} || $conf{layer_gcode} || $conf{position_gcode})) {
+      my $tmp = "/tmp/print3r-$$-gcode-process.gcode";
+      if(open(my $fhr,"<",$fn)) {
+         if($conf{layer_gcode} && $conf{slicer}=~/slic3r/) {   # -- we need to find total count of layers
+            my @s = stat($fn);
+            my $p = $s[7] * 0.9;
+            $p = $s[7] < 2000 ? 0 : $p;
+            seek($fhr,$p,-1);
+            my $tail;
+            while(<$fhr>) {
+               chop;
+               $process->{layer_total} = $1 if(/LAYER:(\d+)/);
+            }
+            seek($fhr,0,0);  
+            $process->{layer_total}++;          # -- count is +1 of last layer number (starts with 0)
+         }
+
+         if(open(my $fhw,">",$tmp)) {
+            $process->{layer_current} = 0;
+ 
+            while(<$fhr>) {
+               $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
+               if($process->{layer_total} && /;\s*LAYER:\s*(\d+)/) {
+                  $process->{layer_current} = $1;
+                  layerScript(), $_ = $conf{layer_gcode} if($conf{layer_gcode});
+               }
+               my $l = processGcodeLine($_);
+               print $fhw $l;
+            }
+            close $fhw;
+            close $fhr;
+         } else {
+            error("processGcode: could not write '$tmp'");
+         }
+      } else {
+         error("processGcode: could not read '$fn'");
+      }
+      push(@rm,$tmp);
+      $fn = $tmp;
+      print "\n" unless($conf{quiet});
+   } 
+   return $fn;
+}
+
+sub layerScript {
+   $process->{layer_percent} = 100/$process->{layer_total} * $process->{layer_current};
+   $process->{layer_relative} = 1/$process->{layer_total} * $process->{layer_current};
+   my $r = 1/$process->{layer_total} * $process->{layer_current};
+   $process->{a2} = 1-$r;                                # 1..0
+   $process->{b2} = $r;                                  # 0..1
+   $process->{a22} = $r < 1/2 ? 1-$r*2 : ($r-1/2)*2;     # 1..0..1
+   $process->{b22} = $r < 1/2 ? $r*2 : 1-($r-1/2)*2;     # 0..1..0
+   $process->{a3} = $r < 1/2 ? 1-$r*2 : 0;               # 1..0..0
+   $process->{b3} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;    # 0..1..0
+   $process->{c3} = $r >= 1/2 ? ($r-1/2)*2 : 0;          # 0..0..1
+   $process->{a34} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;                         # 1..0..0..1
+   $process->{b34} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;                       # 0..1..0..0
+   $process->{c34} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
+}
+
+sub printGcode {
+   my($fn) = shift;
+   my(%conf) = %{@_[0]};
+
+   my $lock = $conf{device};
+   $lock =~ s/\W/_/g;
+   $lock = "/var/lock/print3r-$lock";
+
+   if(-e $lock && (stat($lock))[9] > time()-3*60) {
+      print "ERROR: printer at $conf{device} is busy (locked with $lock), abort.\n";
+      #print " HINT: if you are absolutely sure no print job is going on, you can remove the lock $lock or\n";
+      #print "       wait max 3mins so the lock is no longer considered\n";
+      cleanup();
+      exit -1;
+   }
+   my $com = openSerial($conf{device});
+
+   my $tlock = time();                            # -- time of lock
+   open(my $lfh,">$lock");
+   print $lfh time();
+   close($lfh);
+   
+   my $st = time();
+   my $st_e; 
+
+   # $fn = processGcode($fn);
+   
+   open(my $fh,"<",$fn);
+   return if(!$fh);
+   
+   webcam_snap([$fh,$com]) if($conf{webcam});
+
+   if($conf{layer_gcode} && $conf{slicer}=~/slic3r/) {   # -- we need to find total count of layers
+      my @s = stat($fn);
+      my $p = $s[7] * 0.9;
+      $p = $s[7] < 2000 ? 0 : $p;
+      seek($fh,$p,-1);
+      my $tail;
+      while(<$fh>) {
+         chop;
+         $process->{layer_total} = $1 if(/LAYER:(\d+)/);
+      }
+      seek($fh,0,0);  
+      $process->{layer_total}++;          # -- count is +1 of last layer number (starts with 0)
+   }
+
+   my $pos = 0;
+   my $pos_tot = (stat($fn))[7];
+   my $pos_t = 'abs';
+   my $lcur_z;
+   my $cur_z = 0;
+   my $tot_e = 0;
+   my $cur_e = 0;
+   my $layer = 0;
+   
+   my $cpath;           # -- find slicer base settings; cpath contains path
+   foreach my $p (@paths) {
+      $cpath = $p, last if(-e "$p/gcode");
+   }
+
+   $SIG{INT} = sub {
+      print "\n\taborting print (max $conf{timeout}s) ...\n";
+      sleep 1;
+
+      if(!$conf{abort_gcode}) {
+         print "\n$me: WARN: no abort_gcode defined, nozzle/bed might be still heating/hot\n";
+      } else {
+         foreach my $l (split(/\n/,$conf{abort_gcode})) {
+            next if($l=~/^\s*;/);
+            $l .= "\n";
+            printerSend($com,$l);
+         
+            my($resp) = printerResponse($com,$l,{timeout=>$conf{timeout}});
+            last if($resp eq 'abort');
+         }
+      }
+      unlink $lock;
+      cleanup();
+      exit -1;
+   };
+
+   my $status = "init";
+   my $lst;
+
+   my($min,$max,$sz,$cp);
+   
+   my $positionScript = sub {
+      my($rx,$ry,$rz) = ($cp->{x}/$sz->{x},$cp->{y}/$sz->{y},$cp->{z}/$sz->{z});
+      my $r = atan2($ry-0.50001,$rx-0.50001) / (2*pi);
+      my($a,$b,$c);
+      $a = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;
+      $b = $r < 1/3 ? $r*3 : $r < 2/3 ? 1-($r-1/3)*3 : 0;
+      $c = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1-($r-2/3)*3 : 0;
+      my $l = "M165 A$a B$b C$c";
+      print "$me: gcode insert (post-gcode): $l\n" if(1||$conf{verbose}>1 && !$conf{quiet});
+      printerSend($com,"$l\n");
+      printerResponse($com);
+   };
+   
+   if($conf{position_gcode}) {                        # -- FUTURE: any position-gcode? we need determine min/max to calculate relative x,y,z
+      $min->{x} = $min->{y} = $min->{z} = 1e38;
+      $max->{x} = $max->{y} = $max->{z} = -1e38;
+      while(<$fh>) {
+         my($c,$id) = (/^([MG])(\d+)/);
+         if($c eq 'G' && ($id == 1 || $id == 0)) {      # -- move or extrude
+            my $px;
+            foreach my $pa (split(/ /)) {
+               $px->{lc($1)} = $2 if($pa=~/([XYZE])([\d\.]+)/);
+            }
+            if($px->{e}) {    
+               foreach my $k (keys %$px) {   
+                  $max->{$k} = $px->{$k} if($max->{$k}<$px->{$k});
+                  $min->{$k} = $px->{$k} if($min->{$k}>$px->{$k});
+               }
+            } elsif(defined $px->{z}) {
+               my $k = 'z';
+               $max->{$k} = $px->{$k} if($max->{$k}<$px->{$k});
+               $min->{$k} = $px->{$k} if($min->{$k}>$px->{$k});
+            }
+         }
+      }
+      $sz->{x} = $max->{x}-$min->{x};
+      $sz->{y} = $max->{y}-$min->{y};
+      $sz->{z} = $max->{z}-$min->{z};
+      print "$me: extruding space: +$min->{x}+$min->{y} $sz->{x}x$sz->{y}x$sz->{z}\n" unless($conf{quiet});
+      seek($fh,0,0);
+   }
+
+   $process->{layer_current} = 0;
+   
+   while(<$fh>) {
+      my $l = $_;
+      $pos += length($l);
+     
+      my $eta = (time()-$st) / $pos * $pos_tot;     # -- total time
+      $eta = (($st + $eta) - time()) / 60;          # -- relative
+      my $now = (time()-$st)/60;
+
+      webcam_snap([$fh,$com]) if($conf{webcam});
+   
+      if($cur_e && $st_e && $process->{filament_used}) {      # -- estimated arrival/end based on extrusion (without heating up), more precise but depends on "filament_used" data
+         $eta = (time()-$st_e) / $cur_e * $process->{filament_used};
+         $eta = (($st_e + $eta) - time()) / 60;
+      }
+
+      # -- rudimentary catch layer changes, if small change then it's a layer change
+      $cur_z = $1 if($l=~/^G[01] .*Z(\S+)/);
+
+      # -- determine current Z layer nr
+      if($process->{non_planar} || $conf{slicer} eq 'slicer4rtn' || $conf{slicer} eq '5dmaker' || $conf{slicer} eq 'zplus') {      # -- slicer4rtn & 5dmaker are non-planar, rely on G-code info
+         $layer = $1 if($l =~ /^;\s*LAYER:\s*(\d+)/);     
+      } else {                               # -- determine via heuristic & nummerical the actual Z layer
+         $layer++, $lcur_z = $cur_z if($cur_z > 0 && ($cur_z - $lcur_z) < 1 && $lcur_z != $cur_z);
+      }
+      $pos_t = 'abs' if(/^G90\b?$/||/^M82\b?$/); 
+      $pos_t = 'rel' if(/^G91\b?$/||/^M83\b?$/); 
+
+      # -- $tot_e is the absolute extrusion length (regardless of extrusion mode abs/rel)
+      #    $cur_e is also in absolute extrusion length (easier to calculate)
+      if($pos_t eq 'abs') {
+         $tot_e = $cur_e, $cur_e = $1*1 + $tot_e if($l=~/^G92 E(-?[\d\.]+)/);
+         $status = "printing", $cur_e = $1*1 + $tot_e, $st_e = $st_e ? $st_e : time() if($l=~/G1\s.*E(\-?[\d\.]+)/);
+      } else {
+         $tot_e = $cur_e, $cur_e = $1*1 + $tot_e if($l=~/^G92 E(-?[\d\.]+)/);
+         $status = "printing", $cur_e += $1*1, $st_e = $st_e ? $st_e : time() if($l=~/G1\s.*E(\-?[\d\.]+)/);
+      }
+      $status = "heating" if($l=~/^M109/);
+      
+      # -- status line
+      if(!$conf{quiet}) {
+         if($status ne 'printing') {
+            printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
+         } else {
+            printf "$me: print: %dh %02dm elapsed,%s %.1f%% complete, z=%.2fmm, layer #%d, filament %.2fm  %s",
+               int($now/60),$now%60,$eta?sprintf(" eta %dh %02dm,",int($eta/60),$eta%60):"",100*$pos/$pos_tot,$cur_z,$layer,$cur_e/1000,$conf{verbose}?"\n":"\r"
+         }
+      }
+
+      if($conf{position_gcode} && $l =~ /^G1\s+(\S.+)/) {
+         my $c = $1;
+         my $e = 0;
+         foreach my $p (split(/ /,$c)) {
+            my($a,$u) = ($p=~/([XYE])([\d\.]+)/);
+            $cp->{lc($a)} = $u - $min->{lc($a)} if($a);
+            $e++ if($a eq 'E');
+         }
+         &$positionScript() if($e);
+      }
+      $process->{layer_total} = $1 if(/;\s*LAYER_COUNT:\s*(\d+)/);
+
+      if($process->{layer_total} && /;\s*LAYER:\s*(\d+)/) {
+         $process->{layer_current} = $1;
+         layerScript();
+         $l = $conf{layer_gcode} if($conf{layer_gcode});
+      }
+      
+      $process->{non_planar}++ if(/;\s*NON_PLANAR/||/;\s*NONPLANAR/);
+      
+      next if($l=~/^;/ || $l=~/^\s*$/);     # -- comments or empty lines are not sent
+
+      if(0 && $l=~/^T\d+/ && $conf{toolmap}) {
+         foreach my $t (split(/:/,$conf{toolmap})) {
+            my($a,$b) = split(/[=]/,$t);
+            if($l =~ s/$a/$b/) {
+               print "$me: replace '$a' with '$b'\n" if($conf{verbose}>1 && !$conf{quiet});
+               last;
+            }
+         }
+         print " in: '$l'\n";
+         $l = processGcodeLine($l);
+         print "out: '$l'\n";
+         if(0) {
+            $l =~ s/\\n/\n/g;
+            if($l=~/\n/) {
+               foreach my $l_ (split(/\n/,$l)) {
+                  print "$me: gcode change (toolmap): $l_\n" if($conf{verbose}>1 && !$conf{quiet});
+                  printerSend($com,$l_."\n");
+                  my($resp) = printerResponse($com,$l_);
+               }
+               next;
+            } else {
+               $l .= "\n";
+            }
+         }
+         print "$me: gcode change (toolmap): $l\n" if($conf{verbose}>1 && !$conf{quiet});
+      } else {
+         #print " in: '$l'\n";
+         $l = processGcodeLine($l);
+         #print " out: '$l'\n";
+      }
+      
+      if(0 && $l=~/\$\{(\w+)\}/) {    # -- any variable to replace?
+         $l =~ s/\$\{(\w+)\}/defined $conf{$1} ? $conf{$1} : $process->{$1}/eg;
+         print "$me: gcode change (variables): $l\n" if($conf{verbose}>1 && !$conf{quiet});
+      }
+      
+      print "send: '$l'" if($conf{verbose});
+
+      foreach my $l_ (split(/\n/,$l)) {         # -- we might have multiple lines (as result of processGcodeLine())
+         $l_ .= "\n";
+         printerSend($com,$l_);
+         my($resp) = printerResponse($com,$l_,{callback=>sub {
+            my($mesg,$com,$cmd) = @_;
+            my $now = (time()-$st)/60;
+            if(!$conf{quiet} && $status ne 'printing') {
+               # ... e.g. parse while heating up the temperature(s)
+               # " T:202.32 /205.00 B:25.28 /0.00 @:60 B@:0 W:?"
+               if($status eq 'heating') {
+                  if($mesg=~/(T:[\d\.]+ \/[\d\.]+) (B:[\d\.]+ \/[\d\.]+)/) {
+                     printf "$me: print: %s (%s, %s): %dh %02dm elapsed\r",$status,$1,$2,int($now/60),$now%60;
+                  } else {
+                     ;
+                  }
+               } else {
+                  printf "$me: print: %s: %dh %02dm elapsed\r",$status,int($now/60),$now%60;
+               }
+            }
+         }});
+      }
+      
+      if($conf{display_update}ne'off' && time()-$lst>3) {           # -- update printer display
+         printerSend($com,sprintf("M117 %d%% eta %s l#%d%s\n",100*$pos/$pos_tot,
+            $eta ? ($eta > 60 ? sprintf("%.1fh",$eta/60) : int($eta)."m" ) : "-",
+            $layer,defined $process->{tool}?" T".$process->{tool}:""));
+         printerResponse($com);
+         #printerSend($com,"M31\n");
+         #printerResponse($com);
+         $lst = time();
+      }
+      
+      if($tlock < time()-20) {         # -- update lock every 20s
+         open(my $lfh,">$lock");
+         print $lfh time();
+         close $lfh;
+         $tlock = time();
+      }
+   }
+   close $fh;
+   
+   my $tot = int((time() - $st + 30)/60);
+   printerSend($com,"M117 completed: " . sprintf("%dh %02dm",int($tot/60),$tot%60) . "\n") if($conf{display_update}ne'off');
+   printerResponse($com);
+   
+   if($conf{webcam}) {
+      webcam_snap([$com],1);      # -- force
+      my $w = webcam_snapconf();
+
+      sleep(3+$w->{delay});       # -- make sure last webcam snap is done
+
+      my $dir = "$ENV{HOME}/.print3r/snaps/";   # -- review all snaps
+      my(@se,@sm);
+      foreach my $fn (@{$process->{webcam}->{snaps}}) {
+         if(-e "$dir/$fn") {
+            push(@se,$fn);
+         } else {
+            push(@sm,$fn);
+         }
+      }
+      if(@se==0) {
+         delete $process->{webcam};
+         print "\n" unless($conf{verbose});
+         print "$me: WARN: webcam(s) failed to capture any images";
+      } else {
+         my $tot = @{$process->{webcam}->{snaps}};
+         $process->{webcam}->{snaps} = \@se;    # -- list only existing images
+         delete $process->{webcam}->{last};
+         if(@sm>0) {
+            print "\n" unless($conf{verbose});
+            my $p = 100 / $tot * @sm;
+            printf("$me: WARN: webcam(s) missed to capture some images (%d out of %d, %d%%)",scalar @sm,$tot,$p);
+         }
+      }
+   } else {
+      sleep 3;                    # -- give it time
+   }
+   print "\n" if(!$conf{quiet});
+   
+   unlink $lock;
+   
+   # -- log printjob
+   $process->{time}->{print} = time()-$st;
+   mkdir $ENV{HOME}."/.print3r" unless(-e $ENV{HOME}."/.print3r");
+   open(my $lfh,">>",$ENV{HOME}."/.print3r/log.json");
+   print $lfh toJSON({
+      version => "$NAME $VERSION",
+      internals => { versions => versions() },
+      settings => \%conf,
+      printer => $printer,
+      time => time(),
+      file_list => \@f_in,
+      part => $fn,
+      size => (stat($fn))[7],
+      process => $process,
+      duration => $process->{time}->{print},
+      uid => defined $conf{uid}?$conf{uid}:uid()
+   },{pretty=>0})."\n";
+   
+   close $lfh;
+}
+
+sub printerSend {
+   my($com,$msg) = @_;
+   
+   $msg =~ s/;.*$//;
+   
+   if($conf{serialif}eq'termios') {
+      print $com $msg;
+   } else {
+      $com->write($msg);
+   }
+}
+
+sub printerResponse {
+   my($com,$cmd,$arg) = @_;
+   my $await_ok = ($cmd=~/^[GM]/);
+   my $resp = '';
+   my $st = time();
+   
+   if($conf{serialif}eq'termios') {
+      my $ln = "";
+      while(1) {
+         my $rd;
+
+         if(read($com,$rd,3)) {           # -- minimal read (e.g. "ok\n")
+            print ">> '$rd'\n" if($conf{verbose}>2);
+
+            $ln .= $rd;
+            $resp .= $rd;
+
+            &{$arg->{callback}}($ln,$com,$cmd), $ln = '' if($ln =~ /\n/ && defined $arg->{callback} && ref($arg->{callback})eq'CODE');
+   
+            $arg->{timeout} = 0.5, next if($resp =~ /^start/i);
+            
+            if($await_ok) {
+               print "> '$resp'\n" if($conf{verbose}>2);
+               last if($resp =~ /ok/i);
+               sleep 0.005;
+            } elsif($resp=~/\n/) {
+               last;
+            }
+   
+         } elsif($arg->{timeout} && time()-$st > $arg->{timeout}) {
+            return 'abort';
+            
+         } else {
+            sleep 0.005;
+         }
+      }
+      return $resp;
+   } 
+   
+   while(1) {
+      my($in,$out);
+      (undef,$in,$out,undef) = $com->status();
+
+      if($in) {
+         print "# in:$in out:$out\n" if($conf{verbose}>1);
+         my($n,$rd) = $com->read($in);
+         $resp .= $rd;
+
+         &{$arg->{callback}}($rd,$com,$cmd) if(defined $arg->{callback} && ref($arg->{callback})eq'CODE');
+
+         if($await_ok) {
+            print "> '$resp'\n" if($conf{verbose}>2);
+            last if($resp =~ /ok/i);
+            last if($resp =~ /start/i);
+            sleep 0.005;
+         } else {
+            last;
+         }
+
+      } elsif($arg->{timeout} && time()-$st > $arg->{timeout}) {
+         return 'abort';
+         
+      } else {
+         sleep 0.005;
+      }
+   }
+   
+   return $resp;
+}
+
+sub webcam_conf {
+   my($c) = @_;
+   my $w;
+
+   foreach my $kv (split(/[;,]/,$c)) {
+      my($k,$v) = split(/:/,$kv);
+      $w->{$k} = $v; 
+   }
+   return $w;
+}
+
+sub webcam_snapconf {
+   my $w = webcam_conf($conf{webcam_snap});
+
+   $w->{time} = 60 unless(defined $w->{time});
+   $w->{delay} = 5 unless(defined $w->{delay});
+   $w->{time} = $w->{delay}+1 if($w->{time}<$w->{delay});   # -- sanity check
+
+   return $w;
+}
+
+sub webcam_snap {
+   my($fh,$force) = @_;
+
+   if($conf{webcam}) {
+      my $w = webcam_snapconf();
+
+      if($force || ($process->{webcam}->{last} + $w->{time} < time())) {
+         my $dir = "$ENV{HOME}/.print3r/snaps";
+         mkdir $dir unless(-e $dir);
+         
+         $conf{webcam} =~ s/^\s+$//;
+         $conf{webcam} =~ s/\s+$//;
+         
+         my @wcs = split(/\s+/,$conf{webcam});     # -- support multiple webcams
+         my $wcn = 0;
+
+         foreach my $wc (@wcs) {
+            next if(!$wc);
+
+            my @t = localtime();
+            my $fn = sprintf("%04d%02d%02d %02d%02d%02d - ",$t[5]+1900,$t[4]+1,$t[3],$t[2],$t[1],$t[0]);
+            my $nick = $conf{machine_name} || $$;
+   
+            $nick =~ s/[\W ]+/_/g;
+            $fn .= $nick;
+            $fn .= ".$wcn" if(@wcs>1);
+            $fn .= ".jpg";
+   
+            print "$me: take webcam snap #$wcn ($wc, ".toJSON($w,{pretty=>0}).")\n" if($conf{verbose}>0);
+
+            local $SIG{CHLD} = 'IGNORE';
+            my $pid = $$;
+            if(fork()==0) {
+               # -- perl & fork: a pain to deal with (it matters): close all open handles ($com,$fh)
+               #                 otherwise it screws up $fh and/or $com and stalls print
+               # -- this is a hack, but it seems nothing else works (e.g. below with $fd->close won't do it)
+               if(1) {
+                  foreach my $fd (0..10) {
+                     POSIX::close($fd);
+                  }
+               }
+               #foreach my $fd (@$fh) {
+               #   $fd->close;
+               #   #close $fd;
+               #}
+               #close STDIN;
+               #close STDOUT;     # -- needs to be closed, otherwise interferes with $com/$fh higher up (no output about webcam not providing snaps)
+               #close STDERR;        
+   
+               if(fork()==0) {
+                  if(fork()==0) {
+                     close STDOUT;   # -- ffmpeg is chatty
+                     close STDERR;
+                     exec("ffmpeg","-i",$wc,"-ss",$w->{delay},"-r",1,"-vsync",1,"-qscale",1,"-frames:v",1,"-f","image2","$dir/$fn");
+                     exit;
+                  }
+                  wait;
+                  print "$me: WARN: webcam #$wcn did not capture an image ($wc, ".toJSON($w,{pretty=>0}).")\n" unless(-e "$dir/$fn");
+                  my $ws = webcam_conf($conf{webcam_settings});
+                  if(@wcs>1 && $conf{webcam_settings} =~ /\S+ \S+/) {         # -- multiple webcams-settings?
+                     my @s = split(/\s+/,$conf{webcam_settings});
+                     $ws = webcam_conf($s[$wcn]);
+                  }
+                  if(-e "$dir/$fn" && $ws->{rotate}!=0) {
+                     my $nn = $$.".$wcn";
+                     if(fork()==0) {
+                        #exec("jpegtran","-rotate",$ws->{rotate},"-outfile","$dir/$fn","$dir/$fn");  # -- gives artefacts with my webcams (bottom 16px row is not rotated), avoid it
+                        exec("convert","$dir/$fn","-rotate",$ws->{rotate},"$dir/tmp-$nn.jpg");    # -- not optimal, but works
+                        exit;
+                     }
+                     wait;
+                     rename("$dir/tmp-$nn.jpg","$dir/$fn");
+                     exit;
+                  }
+                  print "$me: webcam #$wcn snap saved\n" if($conf{verbose}>0);
+                  exit;
+               }
+               wait;
+               exit;
+            }
+            # -- no wait (continue printing), let the child take its time
+            print "$me: webcam #$wcn done.\n" if($conf{verbose}>0);
+            push(@{$process->{webcam}->{snaps}},$fn);
+            $wcn++;
+         }
+         $process->{webcam}->{last} = time();
+      }
+   }
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+my $n_log = 0;
+
+sub execProgram {
+   my(@a) = @_;
+   my $arg = ref(@a[$#a]) eq 'HASH' ? pop(@a) : { close_stdout=>1, close_stderr=>1, log_stdout=>1, log_stderr=>1 };
+
+   $n_log++;
+   my $ltmp = "/tmp/$me-$$-${n_log}.log";
+
+   # print "EXEC ".join(' ',@a)."\n";
+   
+   if(fork()==0) {
+      close STDOUT if($arg->{close_stdout});
+      close STDERR if($arg->{close_stderr});
+      open(LOG,">",$ltmp);    # -- open log file
+      select LOG; $| = 1;
+      if($arg->{log_stderr}) {
+         if($arg->{log_stderr} =~ /^\d+$/) {
+            *STDERR = *LOG;
+         } else {
+            open(LOG,">",$arg->{log_stderr});
+            *STDERR = *LOG;
+         }
+      }
+      if($arg->{log_stdout}) {
+         if($arg->{log_stdout} =~ /^\d+$/) {
+            *STDOUT = *LOG;
+         } else {
+            open(LOG,">",$arg->{log_stdout});
+            *STDOUT = *LOG;
+         }
+      }
+      exec(@a);
+      # -- never reaches here
+   }
+   wait;
+   
+   open(my $fh,"<",$ltmp);    # -- read log file
+   local $/;
+   my $out = <$fh>;
+   close $fh;
+
+   unlink $ltmp;
+   
+   if($conf{verbose}) {
+      foreach my $l (split(/\n/,$out)) {
+         print "$me:  '$l'\n";
+      }
+   }
+   return($?>>8,$out);
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub readSTL {
+   my($fn) = @_;
+   my $p = { };
+   print ", stl read <$fn>\n" if($conf{verbose});
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
+   if(open(my $fh,"<",$fn)) {
+      my $buff;
+      read($fh,$buff,256);
+      seek($fh,0,0);
+      if($buff=~/facet/) {       # -- ascii
+         my $v;
+         my %vx;                 # -- vertex cache as associative array "<x>,<y>,<z>"
+         my $vxn = 0;
+         my $n = 0;
+         while(<$fh>) {
+            chop;
+            push(@$v,[split(/\s+/,$1)]) if(/vertex\s+(\S.+)/);    # -- be more linient
+            if(/endloop/) {
+               my @px;
+               $px[0] = join(",",map { $_*1.0 } @{$v->[0]});      # -- $_*1.0 parses also "1.0e1" => 10.0
+               $px[1] = join(",",map { $_*1.0 } @{$v->[1]});
+               $px[2] = join(",",map { $_*1.0 } @{$v->[2]});
+               $vx{$px[0]} = $vxn++ unless(defined $vx{$px[0]});
+               $vx{$px[1]} = $vxn++ unless(defined $vx{$px[1]});
+               $vx{$px[2]} = $vxn++ unless(defined $vx{$px[2]});
+               #push(@{$p->{facets}},$v);
+               @px = map { $vx{$_} } @px;
+               push(@{$p->{facets}},\@px);
+               for(my $i=0; $i<3; $i++) {
+                  for(my $j=0; $j<3; $j++) {
+                     # -- update min/max
+                     $min[$j] = $v->[$i]->[$j] if($v->[$i]->[$j]<$min[$j]);
+                     $max[$j] = $v->[$i]->[$j] if($v->[$i]->[$j]>$max[$j]);
+                  }
+               }
+               $v = [], $n++;
+            }
+         }
+         foreach my $q (sort { $vx{$a}-$vx{$b} } keys %vx) {
+            my($x,$y,$z) = split(/,/,$q);
+            push(@{$p->{vertices}},[$x*1,$y*1,$z*1]);
+         }
+         #print toJSON($p);
+         print "$fn: $n facets\n" if($conf{verbose});
+      } else {                   # -- binary
+         my $n;
+         read($fh,$buff,80);
+         read($fh,$n,4);
+         $n = unpack('L',$n);
+         print "$fn: $n facets\n" if($conf{verbose});
+         my $fu = 'f f f';
+         my %vx;
+         my $vxn = 0;
+         for(my $i=0; $i<$n; $i++) {
+            my($nr,$v1,$v2,$v3,$at);
+            read($fh,$nr,4*3);
+            read($fh,$v1,4*3);
+            read($fh,$v2,4*3);
+            read($fh,$v3,4*3);
+            read($fh,$at,2);
+            $at = unpack('S',$at);
+            my $v;
+            push(@$v,[unpack($fu,$v1)]);
+            push(@$v,[unpack($fu,$v2)]);
+            push(@$v,[unpack($fu,$v3)]);
+            #print " @{@v[0]} @{@v[1]} @{@v[2]}\n";
+            #push(@{$p->{facets}},$v);
+               
+            my @px;
+            $px[0] = join(",",@{$v->[0]});
+            $px[1] = join(",",@{$v->[1]});
+            $px[2] = join(",",@{$v->[2]});
+            $vx{$px[0]} = $vxn++ unless(defined $vx{$px[0]});
+            $vx{$px[1]} = $vxn++ unless(defined $vx{$px[1]});
+            $vx{$px[2]} = $vxn++ unless(defined $vx{$px[2]});
+            #push(@{$p->{facets}},$v);
+            @px = map { $vx{$_} } @px;
+            push(@{$p->{facets}},\@px);
+               
+            for(my $i=0; $i<3; $i++) {
+               for(my $j=0; $j<3; $j++) {
+                  # -- update min/max
+                  $min[$j] = $v->[$i]->[$j] if($v->[$i]->[$j]<$min[$j]);
+                  $max[$j] = $v->[$i]->[$j] if($v->[$i]->[$j]>$max[$j]);
+               }
+            }
+         }
+         foreach my $q (sort { $vx{$a}-$vx{$b} } keys %vx) {
+            my($x,$y,$z) = split(/,/,$q);
+            push(@{$p->{vertices}},[$x*1,$y*1,$z*1]);
+         }
+      }
+      close $fh;
+      # -- keep min/max/size up-to-date
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+      return $p;
+   } else {
+      print STDERR "$me: only .stl supported, abort.\n";
+      exit;
+   }
+}
+
+sub writeSTL {
+   my($fn,$p) = @_;
+   print ", stl writing <$fn>\n" if($conf{verbose});
+   if(open(my $fh,">",$fn)) {
+      if(0) {        # -- ascii, very verbose
+         print $fh "solid\n";
+         foreach my $f (@{$p->{facets}}) {
+            print $fh "facet normal 0 0 0\n\touter loop\n";
+            if(0) {
+               foreach my $v (@$f) {
+                  print $fh "\t\tvertex ",join(" ",@$v),"\n";
+               }
+            } else {
+               foreach my $vi ($f) {
+                  for(my $i=0; $i<3; $i++) {
+                     if(!$p->{vertices}->[$vi->[$i]]) {
+                        error("malformed geometry, cannot export faces: ".toJSON($vi->[$i]));
+                     }
+                     my $vp = $p->{vertices}->[$vi->[$i]] ;
+                     print $fh "\t\tvertex ",join(" ",@$vp),"\n";
+                  }
+               }
+            }
+            print $fh "\tendloop\nendfacet\n";
+         }
+         print $fh "endsolid\n";
+         close $fh;
+      } else {       # -- hammer the binary format out, still wasteful
+         print $fh " "x80;
+         print $fh pack("L",scalar @{$p->{facets}});
+         foreach my $f (@{$p->{facets}}) {
+            print $fh pack("f3",0,0,0);   # -- normals
+            my $i = 0;
+            print $fh pack("f3",@{$p->{vertices}->[$f->[$i]]}); $i++;
+            print $fh pack("f3",@{$p->{vertices}->[$f->[$i]]}); $i++;
+            print $fh pack("f3",@{$p->{vertices}->[$f->[$i]]});
+            print $fh pack("S",0);
+         }
+         close $fh;
+      }
+   }
+}
+
+sub readAMF {
+   my($fn) = @_;
+   my $p = { };
+   print ", amf read <$fn>\n" if($conf{verbose});
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
+   if(open(my $fh,"<",$fn)) {
+      local $/;
+      my $buff = <$fh>;
+      close $fh;
+      
+      my $xml = XMLin($buff);
+      my $fa = 1; 
+      $fa = 25.4 if($xml->{unit}eq'inch');
+      $fa = 1000 if($xml->{unit}eq'meter');
+      $fa = 100 if($xml->{unit}eq'cm');
+      $fa = 10 if($xml->{unit}eq'dm');
+      foreach my $o (ref($xml->{object})eq'ARRAY'?@{$xml->{object}}:$xml->{object}) {
+         foreach my $m (ref($o->{mesh})eq'ARRAY'?${$o->{mesh}}:$o->{mesh}) {
+            my @vs;
+            foreach my $v (ref($m->{vertices}->{vertex})?@{$m->{vertices}->{vertex}}:$m->{vertices}->{vertex}) {
+               my(@p) = ($v->{coordinates}->{x}*$fa,$v->{coordinates}->{y}*$fa,$v->{coordinates}->{z}*$fa);
+               for(my $i=0; $i<3; $i++) {
+                  $min[$i] = $p[$i] if($p[$i]<$min[$i]);
+                  $max[$i] = $p[$i] if($p[$i]>$max[$i]);
+               }
+               push(@vs,\@p);
+            }
+            $p->{vertices} = \@vs;
+            my $vn = 0;
+            foreach my $t (ref($m->{volume})eq'ARRAY'?@{$m->{volume}}:$m->{volume}) {
+               foreach my $c (@{$t->{triangle}}) {
+                  push(@{$p->{facets}},[$c->{v1},$c->{v2},$c->{v3}]);
+                  push(@{$p->{volumes}->[$vn]},$#{$p->{facets}});
+               }
+               $vn++;
+            }
+         }
+      }
+      # -- keep min/max/size up-to-date
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+      return $p;
+
+   } else {
+      print STDERR "$me: only .amf supported, abort.\n";
+      exit;
+   }
+}
+
+sub writeAMF {
+   my($fn,$p) = @_;
+   print ", amf writing <$fn>\n" if($conf{verbose});
+
+   if(open(my $fh,">",$fn)) {
+      print $fh "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+      print $fh "<amf unit=\"mm\" version=\"1.1\">\n";
+      print $fh " <metadata type=\"exporter\">$me $VERSION</metadata>\n";
+      print $fh " <object id=\"1\">\n";
+      print $fh "  <mesh>\n";
+      print $fh "   <vertices>\n";
+      foreach my $v (@{$p->{vertices}}) {
+         print $fh sprintf("    <vertex><coordinates><x>%.5f</x><y>%.5f</y><z>%.5f</z></coordinates></vertex>\n",$v->[0],$v->[1],$v->[2]);
+      }
+      print $fh "   </vertices>\n";
+      my $mi = 2;
+      my $ei = 1;
+      if($p->{volumes}) {     # -- multiple volumes (multiple color/material)
+         foreach my $v (@{$p->{volumes}}) {
+            print $fh "   <volume materialid=\"$mi\">\n";
+            print $fh "   <metadata type=\"slic3r.extruder\">$ei</metadata>\n";     # -- essential for slic3r & slic3r-pe (and prusa-slicer as well)
+            foreach my $f (@$v) {
+               print $fh sprintf("   <triangle><v1>%d</v1><v2>%d</v2><v3>%d</v3></triangle>\n",$p->{facets}->[$f]->[0],$p->{facets}->[$f]->[1],$p->{facets}->[$f]->[2]);
+            }
+            print $fh "   </volume>\n";
+            $mi++;
+            $ei++;
+         }
+      } else {               # -- single volume (single color/material)
+         print $fh "   <volume>\n";
+         foreach my $f (@{$p->{facets}}) {
+            print $fh sprintf("   <triangle><v1>%d</vi><v2>%d</v2><v3>%d</v3></triangle>\n",$f->[0],$f->[1],$f->[2]);
+         }
+         print $fh "   </volume>\n";
+      }
+      print $fh "  </mesh>\n";
+      print $fh " </object>\n";
+      if($p->{volumes}) {
+         $mi = 2;
+         foreach my $v (@{$p->{volumes}}) {        # -- listing materials (slice3r / slic3r-pe ignore it)
+            print $fh " <material id=\"$mi\">\n";
+            print $fh " </material>\n";
+            $mi++;
+         }
+      }
+      print $fh "</amf>\n";
+      close $fh;
+   }
+}
+
+sub read3MF {
+   # -- supporting .3mf files (zip-file with multiple files) - not yet fully functional
+   my($fn) = @_;
+   print ", 3mf read <$fn>\n" if($conf{verbose});
+
+   my $err;
+
+   require Archive::Zip;
+   require XML::Simple;
+   
+   # require HTML::TreeBuilder::XPath;  -- fails on me
+   my $mr = sub {
+      my($m)  = @_;
+      my $r = @$m;
+      my $c = @{$m->[0]};
+      return ($r,$c); 
+   };
+   my $mm = sub {
+      my($r_mat1,$r_mat2) = @_;
+      my($r_product);
+      my($r1,$c1) = &$mr($r_mat1);
+      my($r2,$c2) = &$mr($r_mat2);
+
+      die "$me: matrix 1 has $c1 columns and matrix 2 has $r2 rows, cannot multiply\n" unless ($c1 == $r2);
+
+      for (my $i = 0; $i < $r1; $i++) {
+         for (my $j = 0; $j < $c2; $j++) {
+            my $sum = 0;
+            for (my $k = 0; $k < $c1; $k++) {
+               $sum += $r_mat1->[$i][$k] * $r_mat2->[$k][$j];
+            }
+            $r_product->[$i][$j] = $sum; 
+         }
+      }
+      $r_product;
+   };
+   my $zip = Archive::Zip->new($fn);
+
+   if($zip) {
+      my $m = $zip->memberNamed('3D/3dmodel.model');
+      if($m && length($m->contents)) {
+         my $xml = $m->contents;
+
+         $xml =~ s/^<[^>]+>//;         # -- needed
+
+         my $c = XMLin($xml);          # -- this seems to work
+         my $vn = 0;
+      
+         my @ps; 
+         
+         # print ", build" unless($conf{quiet}||$conf{verbose});
+         foreach my $b ($c->{build} && ref($c->{build}->{item})eq'ARRAY' ? @{$c->{build}->{item}} : $c->{resources}->{object}) {
+            # -- NOTE: we treat each build as separate model (independent of each other)
+            my $o = $b->{objectid} && $c->{resources}->{object}->{$b->{objectid}} || $b;
+            my $mv = $c->{build} && ref($c->{build}->{item})eq'ARRAY' ? @{$c->{build}->{item}} : 0;
+            my $t;
+    
+            my $fi = 0;
+            my $p = { };
+
+            my(@min,@max);
+            $min[0] = $min[1] = $min[2] = 1e6;
+            $max[0] = $max[1] = $max[2] = -1e6;
+
+            # print " #$vn" unless($conf{quiet}||$conf{verbose});
+            if($b->{transform}) {
+               my @tr = split(/\s+/,$b->{transform});
+               for(my $i=0; $i<4; $i++) {      # -- rows
+                  for(my $j=0; $j<3; $j++) {   # -- cols
+                     $t->[$i][$j] = $tr[$j+$i*3];
+                  }
+               }
+               $t->[0][3] = 0;
+               $t->[1][3] = 0;
+               $t->[2][3] = 0;
+               $t->[3][3] = 1;
+            }
+            my $voff = 0;    # @{$p->{vertices}};
+            my(@off);
+            foreach my $c (@{$o->{mesh}->{vertices}->{vertex}}) {
+               my(@p) = ($c->{x},$c->{y},$c->{z});
+               if($t) {
+                  my $q = &$mm($t,[[$p[0]],[$p[1]],[$p[2]],[0]]);
+                  #my $p = &$mm($t,[[$p[0],$p[1],$p[2],0]]);
+                  @p = ($q->[0][0],$q->[1][0],-$q->[2][0]);       # -- for some bizarre reason z is inverted, revert it again
+                  #@p = ($q->[0][0],$q->[0][1],$q->[0][2]);
+               } else {
+                  @p = map { $_*1 } @p;
+               }
+               #$p[0] += $off[0];
+               #$p[1] += $off[1];
+               for(my $i=0; $i<3; $i++) {
+                  $min[$i] = $p[$i] if($p[$i]<$min[$i]);
+                  $max[$i] = $p[$i] if($p[$i]>$max[$i]);
+               }
+               push(@{$p->{vertices}},\@p);
+            }
+            foreach my $t (@{$o->{mesh}->{triangles}->{triangle}}) {
+               push(@{$p->{facets}},[$t->{v1}+$voff,$t->{v2}+$voff,$t->{v3}+$voff]);
+               #push(@{$p->{volumes}->[$vn]},$fi) if($mv);
+               $fi++;
+            }
+            $vn++;
+            $p->{min} = \@min;
+            $p->{max} = \@max;
+            $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+            $p = partRecenter($p,[1,1,-1]);    # -- ensure centered and z=0
+            push(@ps,$p);
+         }
+         return partsArrange(@ps,$printer);
+         
+      } else {
+         error("$fn: internal format mismatch (no 3D/3dmodel.model)");
+      }
+         
+   } else {
+      error("$fn: error decoding zip format");
+   }
+   return { };
+}
+
+sub write3MF {
+   # -- not yet
+}
+
+sub readOBJ {
+   my($fn) = @_;
+   my $p = { };
+   print ", obj read <$fn>\n" if($conf{verbose});
+   
+   my $err;
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
+   if(open(my $fh,"<",$fn)) {
+      my(@vs);
+      while(<$fh>) {
+         chop;
+         next if(/^\s*#/);
+         if(/^v /) {
+            my(@c) = split(/ +/);
+            shift(@c);
+            push(@{$p->{vertices}},[$c[0]*1,$c[1]*1,$c[2]*1]);
+            for(my $i=0; $i<3; $i++) {
+               $min[$i] = $c[$i] if($min[$i]>$c[$i]);
+               $max[$i] = $c[$i] if($max[$i]<$c[$i]);
+            }
+         } elsif(/^f /) {
+            my(@c) = split(/ +/);
+            shift(@c);
+            @c = map { $_-1 } @c;
+            foreach my $i (0..$#c-2) {
+               push(@{$p->{facets}},[$c[0],$c[$i+1],$c[$i+2]]);
+            }
+         } elsif(/^\s*$/) {
+            ;
+         } elsif(/^(\S+)/) {
+            print "$me: WARN: '$1' in <$fn> not supported yet, ignored\n" if(!$err->{$1});
+            $err->{$1}++;
+         }
+      }
+      close $fh;
+      
+      # -- keep min/max/size up-to-date
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+      #print toJSON($p);
+      return $p;
+      
+   } else {
+      print STDERR "$me: only .obj supported, abort.\n";
+      exit;
+   }
+}
+
+sub writeOBJ {
+   my($fn,$p) = @_;
+   print ", obj writing <$fn>\n" if($conf{verbose});
+   if(open(my $fh,">",$fn)) {
+      foreach my $v (@{$p->{vertices}}) {
+         print $fh sprintf("v %.5f %.5f %.5f\n",$v->[0],$v->[1],$v->[2]);
+      }
+      if($p->{volumes}) {     # -- multiple volumes (multiple color/material)
+         foreach my $v (@{$p->{volumes}}) {
+            foreach my $f (@$v) {
+               print $fh sprintf("f %d %d %d\n",$p->{facets}->[$f]->[0]+1,$p->{facets}->[$f]->[1]+1,$p->{facets}->[$f]->[2]+1);
+            }
+         }
+      } else {               # -- single volume (single color/material)
+         foreach my $f (@{$p->{facets}}) {
+            print $fh sprintf("f %d %d %d\n",$f->[0]+1,$f->[1]+1,$f->[2]+1);
+         }
+      }
+      close $fh;
+   }
+}
+
+sub readOFF {
+   my($fn) = @_;
+   my $p = { };
+   print ", off read <$fn>\n" if($conf{verbose});
+   
+   my $err;
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
+   if(open(my $fh,"<",$fn)) {
+      my($nv,$nf); 
+      my $t = 0;
+      while(<$fh>) {
+         s/\n$//;
+         next if(/^\s*#/||/^\s*$/);
+         $t++, next if($t==0 && /^OFF/);
+         $t++, $nv = $1, $nf = $2, next if($t==1 && /^(\d+)\s+(\d+)/);
+         if($t==2 && $nv > 0) {
+            s/^\s+//;
+            my(@c) = split(/\s+/);
+            @c = map { $_ * 1 } @c;
+            push(@{$p->{vertices}},[$c[0],$c[1],$c[2]]);
+            for(my $i=0; $i<3; $i++) {
+               $min[$i] = $c[$i] if($min[$i]>$c[$i]);
+               $max[$i] = $c[$i] if($max[$i]<$c[$i]);
+            }
+            $nv--;
+         } elsif($t==2 && $nv == 0 && $nf > 0) {
+            s/^\s+//;
+            my(@v) = split(/\s+/);
+            @v = map { $_ * 1 } @v;
+            shift(@v);        # -- we don't need the first
+            for(my $i=0; $i<$#v-2; $i++) {
+               push(@{$p->{facets}},[$v[0],$v[$i+1],$v[$i+2]]);
+            }
+            $nf--;
+         } elsif($t==2 && $nv == 0 && $nf == 0) {
+            last;
+         }
+      }
+      close $fh;
+      # -- keep min/max/size up-to-date
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+      return $p;
+      
+   } else {
+      print STDERR "$me: only .off supported, abort.\n";
+      exit;
+   }
+}
+
+sub read3MJ {
+   my($fn) = @_;
+   my $p = { };
+   print ", 3mj read <$fn>\n" if($conf{verbose});
+   
+   my $err;
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+   
+
+   if(-e $fn) {
+      my $s;
+      
+      my $buff;                   # -- probe header
+      open(my $fh,"<",$fn);
+      read($fh,$buff,256);
+      close $fh;
+   
+      local $/;
+      if($buff=~/^\x1f\x8b/) {    # -- compressed
+         my $fh = new IO::Zlib;
+         $fh->open($fn,"rb");
+         $s = <$fh>;
+         $fh->close;
+      } else {
+         open(my $fh,"<",$fn);
+         $s = <$fh>;
+         close $fh;
+      }
+      my $e = fromJSON($s);
+      unless($e && $e->{format} && $e->{format}=~/^3MJ\/\d\.\d/) {
+         print STDERR "$me: invalid 3MJ format of \"$fn\"\n";
+         exit -1;
+      }
+      foreach my $v (@{$e->{vertices}}) {
+         my @c = @{$v->{c}};
+         for(my $i=0; $i<3; $i++) {
+            $min[$i] = $c[$i] if($min[$i]>$c[$i]);
+            $max[$i] = $c[$i] if($max[$i]<$c[$i]);
+         }
+         push(@{$p->{vertices}},\@c);
+      }
+      my $vid = 0;
+      my $fid = 0;
+      foreach my $v (@{$e->{volumes}}) {
+         foreach my $f (@{$v->{triangles}}) {
+            push(@{$p->{facets}},$f->{v});
+            push(@{$p->{volumes}->[$vid]},$fid++) if(@{$e->{volumes}}>1);
+         }
+         $vid++;
+      }
+      close $fh;
+      
+      # -- keep min/max/size up-to-date
+      $p->{min} = \@min;
+      $p->{max} = \@max;
+      $p->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+      return $p;
+      
+   } else {
+      print STDERR "$me: only .3mj supported, abort.\n";
+      exit;
+   }
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub partWrite {
+   my($fn,$p) = @_;
+   if($fn=~/\.amf$/i) {
+      return writeAMF($fn,$p);
+   } elsif($fn=~/\.obj$/i) {
+      return writeOBJ($fn,$p);
+   } else {
+      return writeSTL($fn,$p);
+   }
+}
+
+sub partRead {
+   my($fn) = @_;
+   my $p; 
+   
+   if(!-e $fn) {
+      error("file <$fn> not found, abort");
+   }
+   if($fn=~/\.stl$/i) {
+      $p = readSTL($fn);
+   } elsif($fn=~/\.amf$/i) {
+      $p = readAMF($fn);
+   } elsif($fn=~/\.obj$/i) {
+      $p = readOBJ($fn);
+   } elsif($fn=~/\.off$/i) {
+      $p = readOFF($fn);
+   } elsif($fn=~/\.3mj$/i) {
+      $p = read3MJ($fn);
+   } elsif($fn=~/\.3mf$/i) {
+      $p = read3MF($fn);
+   } else {
+      error("for internal preprocessing (scale,rotate,etc) only .stl, .amf, .obj, .off, .3mj, .3mf; no support for <$fn>");
+   }
+   $p->{filename} = $fn;
+   $p->{atime} = time();
+   $p->{mtime} = (stat($fn))[9];
+   
+   if($p->{min}->[2]>0 || $p->{min}->[2]<0) {                 # -- min.z > 0?
+      $p = partRecenter($p,[0,0,-1]);     # -- ensure min.z is 0
+   }
+   return $p;
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub partsArrange {         # -- arrange multiple parts (same or different sizes) 
+   my(@ps) = @_;
+   my($c) = pop(@ps);
+
+   return $ps[0] if(@ps<=1);
+
+   my $s = 10;             # -- space between parts
+
+   if(1) {
+      my $p0;
+      my($x,$y) = (0,0);
+      my $h = 0;
+      
+      my(@avg);
+      foreach my $p (@ps) {
+         for(my $i=0; $i<3; $i++) {
+            $avg[$i] += $p->{size}->[$i];
+         }
+      }
+      $avg[0] /= @ps;
+      $avg[1] /= @ps;
+      $avg[2] /= @ps;
+      
+      my($xl,$yl) = ($c->{build}->{x}/$avg[0],$c->{build}->{y}/$avg[1]);
+      my($xi);
+      
+      $xl = int(sqrt($avg[0]*$avg[1])*@ps);
+      
+      foreach my $p (@ps) {
+         $p = partTranslate($p,[-$p->{min}->[0],-$p->{min}->[1],0]);    # -- align for packing
+         if($p->{size}->[0] > $c->{build}->{x} || $y+$p->{size}->[1] > $c->{build}->{y}) {
+            error("too many parts on build plate, exceeds its dimension");
+         }
+         $p0 = partMerge($p0,partTranslate($p,[$x,$y,0]));
+         $x += $p->{size}->[0]+$s;
+         $xi++;
+         $h = $p->{size}->[1]+$s if($h < $p->{size}->[1]+$s);
+         if($x > $c->{build}->{x}-$s || $xi > $xl) {
+            $x = $s;
+            $y += $h;
+            $h = 0;
+            $xi = 0;
+         }
+      }
+      return partRecenter($p0,[1,1,0]);
+      
+   } else {
+      my $bp = Algorithm::BinPack::2D->new(binwidth => $c->{build}->{x}, binheight => $c->{build}->{y});
+      my $i = 0;
+      foreach my $p (@ps) {
+         $p = partTranslate($p,[-$p->{min}->[0],-$p->{min}->[1],0]);    # -- align for packing
+         $bp->add_item(label=>"".++$i,width=>$p->{size}->[0]+$s,height=>$p->{size}->[1]+$s);    # -- hint: it won't like "0" as label, so we start with 1
+      }
+      my $p0 = { };
+      my @pb;
+      my @b = $bp->pack_bins;
+      if(@b>1) {
+         error("too many parts on the build-plate, exceeds its size");
+      } else {
+         foreach my $i (@{$b[0]->{items}}) {
+            my $p = $ps[$i->{label}*1-1];
+            $p0 = partMerge($p0,partTranslate($p,[$i->{x}+$s/2,$i->{y}+$s/2,0]));
+         }
+         return partRecenter($p0,[1,1,0]);
+      }
+   }
+}
+
+sub partMerge {            # -- merge part to another one
+   my($p0,$c) = @_;           
+
+   unless($p0 && $p0->{facets}) {
+      $p0->{facets} = [];
+      $p0->{vertices} = [];
+      $p0->{min} = [1e6,1e6,1e6];
+      $p0->{max} = [-1e6,-1e6,-1e6];
+      $p0->{size} = [0,0,0];
+   }
+   if(0) {
+      push(@{$p0->{facets}},@{$c->{facets}});
+   } else {
+      my $off = @{$p0->{vertices}};
+      my(@a) = map { [$_->[0] + $off,$_->[1] + $off, $_->[2] + $off] } @{$c->{facets}};
+      my(@b); @b = map { [$_->[0] + $off,$_->[1] + $off, $_->[2] + $off] } @{$c->{volumes}} if($c->{volumes});
+      push(@{$p0->{facets}},@a);
+      push(@{$p0->{vertices}},@{$c->{vertices}});
+      push(@{$p0->{volumes}},@b) if($c->{volumes});
+   }
+   
+   for(my $i=0; $i<3; $i++) {
+      $p0->{min}->[$i] = $c->{min}->[$i] if($p0->{min}->[$i]>$c->{min}->[$i]);
+      $p0->{max}->[$i] = $c->{max}->[$i] if($p0->{max}->[$i]<$c->{max}->[$i]);
+   }
+   $p0->{size}->[0] = $p0->{max}->[0]-$p0->{min}->[0];
+   $p0->{size}->[1] = $p0->{max}->[1]-$p0->{min}->[1];
+   $p0->{size}->[2] = $p0->{max}->[2]-$p0->{min}->[2];
+
+   return $p0;
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub partTransform {
+   my($p,$t) = @_;
+   my $n = 0;
+   my $nn = 0;
+   my $pn = { };
+
+   my(@min,@max);
+   $min[0] = $min[1] = $min[2] = 1e6;
+   $max[0] = $max[1] = $max[2] = -1e6;
+
+   if(1) { 
+      my @np;
+      my $n = 0;
+      foreach my $v (@{$p->{vertices}}) {
+         my @nv = &$t(@$v);               # -- per vertex
+         for(my $j=0; $j<3; $j++) {       # -- x,y,z
+            # -- update min/max
+            $min[$j] = $nv[$j] if($nv[$j]<$min[$j]);
+            $max[$j] = $nv[$j] if($nv[$j]>$max[$j]);
+         }
+         push(@np,\@nv);
+         $n++;
+      }
+      $pn->{facets} = $p->{facets};
+      $pn->{vertices} = \@np;
+      $pn->{volumes} = $p->{volumes} if($p->{volumes});
+      print ", $n vertices transformed\n" if($conf{verbose});
+      
+   } else {
+      foreach my $f (@{$p->{facets}}) {
+         my @nf;
+         foreach my $v (@$f) {
+            my @nv = &$t(@$v);               # -- per vertex
+            push(@nf,\@nv) if(@nv==3);
+         }
+         if(@nf==3) {
+            $pn->{facets}->[$n++] = \@nf;
+            $nn++;
+         } else {
+            $pn->{facets}->[$n++] = $f;
+            @nf = @$f;
+         }
+         for(my $i=0; $i<3; $i++) {          # -- 3 vertices per face
+            for(my $j=0; $j<3; $j++) {       # -- x,y,z
+               # -- update min/max
+               $min[$j] = $nf[$i]->[$j] if($nf[$i]->[$j]<$min[$j]);
+               $max[$j] = $nf[$i]->[$j] if($nf[$i]->[$j]>$max[$j]);
+            }
+         }
+      }
+      print ", $nn of $n facets transformed\n" if($conf{verbose});
+   }
+   # -- keep min/max/size up-to-date
+   $pn->{min} = \@min;
+   $pn->{max} = \@max;
+   $pn->{size} = [$max[0]-$min[0],$max[1]-$min[1],$max[2]-$min[2]];
+   $pn->{process} = ();
+   
+   push(@{$pn->{process}},@{$p->{process}}) if($p->{process});
+   
+   return $pn;
+}
+
+sub partRecenter {
+   my($p,$s) = @_;
+   
+   printf ", recenter: %d,%d,%d ",$s->[0],$s->[1],$s->[2] if($conf{verbose});
+   print "min @{$p->{min}}, max @{$p->{max}}, " if($conf{verbose});
+   $s = [1,1,1] unless($s);
+   my $n = 0;
+   my $pn = partTransform($p,sub { 
+      my(@p) = @_;
+      $p[0] -= $p->{min}->[0] + $p->{size}->[0]/2 if($s->[0]);
+      $p[1] -= $p->{min}->[1] + $p->{size}->[1]/2 if($s->[1]);
+      $p[2] -= $p->{min}->[2] + $p->{size}->[2]/2 if($s->[2]>0); 
+      $p[2] -= $p->{min}->[2] if($s->[2]<0);
+      return(@p);
+   });
+   print "=> min @{$pn->{min}}, max @{$pn->{max}}, " if($conf{verbose});
+   push(@{$pn->{process}},{type=>'recenter',data=>$s,time=>time()});
+   return $pn;
+}
+
+sub partScale {
+   my($p,$s) = @_;
+
+   $s = [@$s[0],@$s[0],@$s[0]] if(ref($s)ne'ARRAY' || @$s!=3);
+
+   my $ns = 1;                   # -- normalized value
+   my $adj;
+   
+   print ", scale: @$s" if($conf{verbose});
+   for(my $i=0; $i<3; $i++) {    # -- check any absolute dimension or percentage
+      $ns = $s->[$i] = $s->[$i]/$p->{size}->[$i], $adj++ if($s->[$i] && $s->[$i]=~/mm$/);
+      $ns = $s->[$i] = $s->[$i]/100, $adj++ if($s->[$i] && $s->[$i]=~/%$/);
+   }
+   for(my $i=0; $i<3; $i++) {    # -- adjust any non-set scale factors
+      $s->[$i] = $ns, $adj++ if($s->[$i]==0);
+   }
+   printf ", scale %.2f,%.2f,%.2f",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   print ", adjusted scale: @$s, " if($conf{verbose} && $adj);
+   for(my $i=0; $i<3; $i++) {          # -- update size
+      $p->{size}->[$i] *= $s->[$i];
+   }
+   my $pn = partTransform($p,sub { 
+      my(@p) = @_;
+      return ($p[0]*$s->[0],$p[1]*$s->[1],$p[2]*$s->[2]);
+   });
+   push(@{$pn->{process}},{type=>'scale',data=>$s,time=>time()});
+   return $pn;
+}
+
+sub partRotate {
+   my($p,$s) = @_;
+   my(@r) = ($s->[0] * pi/180,$s->[1] * pi/180,$s->[2] * pi/180);
+   printf ", rotate %.1f,%.1f,%.1f",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   print ", rotate: @$s" if($conf{verbose});
+   my $pn = partTransform($p,sub { 
+      my(@p) = @_;
+      my(@pn);
+      # -- https://ch.mathworks.com/matlabcentral/answers/123763-how-to-rotate-entire-3d-data-with-x-y-z-values-along-a-particular-axis-say-x-axis
+      # -- x
+      $pn[0] = $p[0];  
+      $pn[1] = $p[1]*cos($r[0]) - $p[2]*sin($r[0]);
+      $pn[2] = $p[1]*sin($r[0]) + $p[2]*cos($r[0]);
+      @p = @pn;
+      # -- y
+      $pn[0] = $p[0]*cos($r[1]) + $p[2]*sin($r[1]);
+      $pn[1] = $p[1];
+      $pn[2] = $p[2]*cos($r[1]) - $p[0]*sin($r[1]);
+      @p = @pn;
+      # -- z
+      $pn[0] = $p[0]*cos($r[2]) - $p[1]*sin($r[2]);
+      $pn[1] = $p[0]*sin($r[2]) + $p[1]*cos($r[2]);
+      $pn[2] = $p[2];
+      return (@pn);
+   });
+   push(@{$pn->{process}},{type=>'rotate',data=>$s,time=>time()});
+   return $pn;
+}
+
+sub partTranslate {
+   my($p,$s) = @_;
+   printf ", translate %.1f,%.1f,%.1f",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   print ", translate: @$s" if($conf{verbose});
+   my $pn = partTransform($p,sub { 
+      my(@p) = @_;
+      return ($p[0]+$s->[0],$p[1]+$s->[1],$p[2]+$s->[2]);
+   });
+   push(@{$pn->{process}},{type=>'translate',data=>$s});
+   return $pn;
+}
+
+sub partMirror {
+   my($p,$s) = @_;
+   printf ", mirror %d,%d,%d",$s->[0],$s->[1],$s->[2] if(!$conf{verbose} && !$conf{quiet});
+   print ", mirror: @$s" if($conf{verbose});
+   my $pn = partTransform($p,sub { 
+      my(@p) = @_;
+      return ($p[0]*($s->[0]?-1:1),$p[1]*($s->[1]?-1:1),$p[2]*($s->[2]?-1:1));
+   });
+   push(@{$pn->{process}},{type=>'mirror',data=>$s});
+   return $pn;
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub evalExpr {
+   my($e) = @_;
+
+   #    { ... } eval expression
+   #    $<name> replace variable
+   $e =~ s#\{([^}]+)\}#
+      my $ex = $1;
+      $ex =~ s"\$(\w+)"
+         my $k = $1;
+         if(!(defined $conf{$k} ||$printer->{$k})) {
+            print \"$me: variable \$$k not defined for '$e'\n\";
+            exit -1;
+         }
+         $conf{$k} || $printer->{$k};
+      "eg;
+      eval($ex);
+   #eg;
+   return $e;
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub gconsole {
+   my($cmd,$com,$cpath) = @_;
+
+   $cmd =~ s/^\s+//;
+   $cmd =~ s/\s+$//;
+
+   my(@a) = split(/\s+/,$cmd);
+
+   if(lc($a[0]) eq 'quit' || lc($a[0]) eq 'exit') {
+      exit 0;
+      
+   } elsif(lc($a[0]) eq 'help' ) {
+      my @h;
+      push(@h,"quit","exit","reset");
+      foreach my $p (".",@paths) {
+         opendir(my $dh,"$p/gconsole/commands/");
+         push(@h,grep(!/^\./,readdir($dh)));
+         closedir($dh);
+      }
+      print "available commands: ",join(", ",sort @h),"\n";
+      return("",0);
+      
+   } elsif(lc($a[0]) eq 'reset' ) {
+      # -- reset board
+      if($conf{serialif}eq'termios') {
+         print "WARN: <reset> command not available with serialif=$conf{serialif}\n";
+      } else {
+         $com->pulse_dtr_on(100);
+      }
+      return("",0);
+      
+   } elsif(-e "$cpath/gconsole/commands/$a[0]") {
+      my(@o);
+      print "$me: execute command <$a[0]>\n" if($conf{verbose});
+      open(my $fh,"<","$cpath/gconsole/commands/$a[0]");
+      while(<$fh>) {
+         chop;
+         s/\$(\d+)/$a[$1]/g;
+         push(@o,$_);
+      }
+      close $fh;
+      return (join("\n",@o),1);
+
+   } else {
+      return ($cmd,0);
+   }
+}
+
+sub uid {      # -- 00000000-00000000-00000000-00000000
+   return join("-",map { sprintf("%08x",(rand()*(1<<32))&0xffffffff) } (0..3));
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub openSerial {
+   my($d,$uuid) = @_;
+   my $com;
+
+   $uuid = $uuid || $conf{machine_uuid};
+   
+   if($d=~/^auto/i) {            # -- help out via machine-uuid
+      if(!$conf{machine_uuid}) {
+         error("define machine-uuid in command-line or printer profile, otherwise machine cannot be found");
+      }
+      if($d=~/auto:([\w\.,]+)/) {    # -- extract hostname(s)
+         my $hs = $1;
+         foreach my $h (split(/,/,$hs)) {
+            my $p = 0;
+            while(tcpPing($h,3380+$p)) {
+               my $c = openSerial("tcp:$h:$p",$uuid);
+               return $c if($c);
+            }
+         }   
+      } else {                      # -- probe locally only
+         my $p = 0;
+         while(-e "/dev/ttyUSB$p") {     # -- local
+            my $c = openSerial("/dev/ttyUSB$p",$uuid);
+            return $c if($c);
+            $p++;
+         }
+      }
+      error("wasn't able to find machine with uuid:$conf{machine_uuid}");
+      
+   } elsif($d=~/^tcp:(\S+)/i) {       # -- tcp device?
+      $d = $1;
+      my $sdev = "/tmp/print3r-device-$d";
+      $SIG{CHLD} = 'IGNORE';
+      my $p = 3380;
+      $p += $1*1 if($d=~s/:(\d+)$//);
+      if(!which('socat')) {
+         error("socat not found or installed");
+      }
+      print "$me: connect $d:$p (socat)\n" if($conf{verbose});
+      if(!-e $sdev) {
+         if(fork()==0) {
+            if(fork()==0) {
+               print "$me: launch socat $d:$p\n" if($conf{verbose});
+               exec("socat","pty,raw,echo=0,b$conf{baudrate},link=$sdev","tcp:$d:$p");
+            }
+            wait;
+            print "$me: socat ended\n" if($conf{verbose});
+            unlink $sdev;
+            exit 0;
+         }
+         #wait;
+         sleep 0.5;
+      }
+      print "$me: reroute $d:$p => $sdev\n" if($conf{verbose});
+      $d = $sdev;
+   }
+   $com = Device::SerialPort->new($d || $conf{device}, 1);
+   error("can't open $conf{device}") if(!$com);
+
+   my $done;
+   foreach my $b ($com->baudrate) {       # -- we check availability of baudrate to set
+      if($b*1==$conf{baudrate}*1) {
+         $done++;
+         last;
+      }
+   }
+   
+   if(!$done || $conf{serialif}eq'termios') {
+      $com->close();
+
+      $conf{serialif} = 'termios';
+      
+      print "$me: using termios interface to connect\n" if($conf{verbose});
+      
+      # -- Note: Device::SerialPort does NOT support arbitrary baudrates like default 250000 in Marlin, but 230400 or 115200
+      #    as alternative IO::Termios and Linux::Termios2
+      #       $com->read() works, but $com->status() doesn't exist
+      require IO::Termios;
+      require Linux::Termios2;
+      use Fcntl qw( O_NOCTTY O_NDELAY );
+      
+      $com = IO::Termios->open($conf{device},$conf{baudrate}.",8,n,1",O_NOCTTY|O_NDELAY);
+      
+      error("can't open $conf{device}") if(!$com);
+      
+      $com->setflag_echo(0);
+      $com->blocking(0);
+      $com->autoflush();
+      
+      #sleep 1;                           # -- essential wait
+      #
+      #my $buff;
+      #while(read($com,$buff,3)) {        # -- slurp the manifest
+      #   sleep 0.005;
+      #}
+      
+   } else {
+      $com = Device::SerialPort->new($d || $conf{device}, 1);
+      error("can't open $conf{device}") if(!$com);
+   
+      if($conf{baudrate} && $conf{baudrate}ne'auto') {
+         if($com->can_arbitrary_baud) {
+            $com->baudrate($conf{baudrate}*1);
+         } else {
+            my $done;
+            foreach my $b ($com->baudrate) {
+               if($b == $conf{baudrate}) {
+                  $com->baudrate($conf{baudrate}*1);
+                  $done++;
+               }
+            }
+            unless($done) {
+               error("could not set $conf{baudrate}, as it's not valid baudrate (only ".join(",",sort { $a<=>$b } $com->baudrate)." available)");
+            }
+         }
+   
+      } else {
+         # -- probe baudrate (not yet used, mostly untested)
+         my $bb;
+         print "$me: print: configure serial\r" if(!$conf{quiet});
+         foreach my $b (sort { $b<=>$a } $com->baudrate) {
+            my $st = time();
+   
+            $com->purge_all;
+            $com->baudrate($b);
+   
+            sleep 0.5;
+            
+            print "probe $b\n" if($conf{verbose}>1);
+   
+            printerSend($com,"M115\n");
+   
+            sleep 0.2;
+   
+            my($rd) = printerResponse($com,"M115\n",{timeout => 1, callback => sub {
+               my($rd,$com,$cmd) = @_;
+               $rd =~ s/[\t\r\n]//g;
+               print "> $rd\n" if($conf{verbose}>2);
+            }});
+   
+            if($rd=~/echo/) {
+               $bb = $b;
+               last;
+            } elsif($rd=~/[\0-\037]/) {     # -- gibberish
+               last;
+            } else {
+               #$bb = $b;
+               #last;
+            }
+   
+            last if($bb);
+   
+            sleep 0.3;
+         } 
+         print "baudrate: $bb\n" if($conf{verbose});
+         sleep 0.1;
+         if(!$bb) {
+            error("no viable baudrate for $conf{device} found, abort.");
+         }
+      }
+   }
+   
+   sleep 2;    # -- allow the board to (re)boot
+   
+   $process->{serial_backend} = $conf{serialif};
+   printerResponse($com,"M115\n",{timeout=>1.5, callback=>sub {         
+      my($m) = @_;
+      # -- slurp manifest ... (whatever is left to get)
+   }});
+   
+   # -- retrieve (again) the firmware version & uuid of the machine
+   foreach my $gcode ("M115\n","M122\n") {                 # -- Marlin uses M115, RRF uses M122 to report UUID
+      sleep 0.8;
+      printerSend($com,$gcode);
+      my($resp) = printerResponse($com,$gcode,{timeout=>1.5});
+      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/UUID\s*:\s*(\S+)/);         # Marlin
+      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/Board ID\s*:\s*(\S+)/);     # RRF [1]
+      $printer->{firmware} = $resp, $printer->{uuid} = $1, last if($resp=~/MAC address\s*(\S+)/);      # RRF [2]: as last resort we get MAC address (ethernet or wifi) 
+   }
+
+   if($uuid) {        # -- metadata like UUID requested
+      if($printer->{uuid} && $printer->{uuid} ne $uuid) {
+         if($conf{device}) {
+            error("UUID mismatch: '$conf{machine_uuid}' != '$printer->{uuid}', abort\n");
+         } else {
+            return undef;        # -- no device=... set, therefore we are probing devices, and fail with 'undef'
+         }
+      } elsif(!defined $printer->{uuid}) {
+         print "$me: WARN: retrieve of machine-uuid (UUID) failed, ignored\n";
+      } else {
+         print "$me: authenticated \"$conf{machine_name}\" ($conf{machine_uuid}) at $conf{device}\n";
+      }
+   }
+
+   foreach my $gcode ("M503\n") {      # -- read out EEPROM/settings
+      sleep 0.8;
+      printerSend($com,$gcode);
+      my($resp) = printerResponse($com,$gcode,{timeout=>1.5});
+      $printer->{firmware_eeprom} = $resp;
+   }
+
+   return $com;
+}
+
+sub tcpPing {
+   my($h,$p) = @_;
+   print "$me: probing $h:$p\n" if($conf{verbose}>1);
+   my $s = new IO::Socket::INET(PeerHost=>$h, PeerPort=>$p, Proto=>'tcp'); 
+   return $s && $s->close() || 0;
+}
+   
+# ---------------------------------------------------------------------------------------------------------------
+
+sub webgui {
+   my $server = IO::Socket::INET->new(
+      LocalPort => $conf{webgui_port} || 9082,
+      Type      => SOCK_STREAM,
+      Reuse     => 1,
+      Listen    => 10 )  # or SOMAXCONN
+      or die "can't start a tcp server on port $conf{webgui_port}: $!\n";
+  
+   use IO::Socket;
+   use IO::Select;
+   
+   print STDERR "$me: listening port $conf{webgui_port}\n" if($conf{verbose});
+
+   $SIG{PIPE} = 'IGNORE';
+   $SIG{CHLD} = 'IGNORE';
+
+   my(%g);
+   my $info;
+
+   my $rs = new IO::Select();
+   $rs->add($server);
+   while(1) {
+      my($rhs) = IO::Select->select($rs,undef,undef,0.1);
+      foreach my $rh (@$rhs) {
+         if($rh==$server) {
+            my $c = $rh->accept();
+            $rs->add($c);
+            
+         } else {
+            processRequestHeader($rh);
+            $rs->remove($rh);
+         }
+      }
+   }
+}
+
+sub processRequestHeader {
+   my($client) = @_;
+
+   $client->autoflush(1);
+   $_ = <$client>;
+   if($_) {
+      my($i);
+
+      s/[\n\r]$//g; 
+
+      my($cmd) = ($_=~/^(\S+)/);
+
+      # -- first line of request, "GET / HTTP/1.1"
+      $i->{Header}->{RequestType} = $1, 
+      $i->{Header}->{RequestURL} = $2, 
+      $i->{Header}->{Version} = $3 if(/^(\S+)\s*(\S*)\s*(\S*)/);
+      $i->{Header}->{RemoteAddr} = $client->peerhost();
+
+      if($i->{Header}->{RequestURL}=~s/\?(\S*)//) {
+         $i->{Header}->{QueryString} = $1;
+         foreach my $kv (split(/&/,$i->{Header}->{QueryString})) {
+            my($k,$v) = split(/=/,$kv);
+            $v =~ s/\+/ /g; $v =~ s/%(\X\X)/sprintf("%c",hex($1))/eg; $v =~ s/%%/%/g;
+            $i->{Variable}->{$k} = $v;
+         }   
+      }
+      while(<$client>) {
+         s/[\r\n]//g;
+         if($cmd eq 'PUT'||$cmd eq 'POST'&&length($_)==0) {            # -- end of PUT header
+            read($client,$i->{Content}->{Body},$i->{Header}->{'Content-Length'});
+            $i->{Content}->{Length} = $i->{Header}->{'Content-Length'};
+            
+            if($cmd eq 'POST') {
+               foreach my $kv (split(/&/,$i->{Content}->{Body})) {
+                  my($k,$v) = split(/=/,$kv);
+                  $v =~ s/\+/ /g; $v =~ s/%(\X\X)/sprintf("%c",hex($1))/eg; $v =~ s/%%/%/g;
+                  $i->{Variable}->{$k} = $v;
+               }   
+            }
+            print "C: $i->{Content}->{Body}\n" if($conf{verbose}>1);
+            last;
+            
+         } elsif(length($_)==0) {                      # -- end of header (of any command)
+            last;
+         }
+      }
+      if(fork()==0) {
+         processRequest($client,$i);
+         close $client;
+         exit 0;
+      }
+   }
+   close $client;
+}
+
+sub processRequest {
+   my($c,$i) = @_;
+   print toJSON($i) if($conf{verbose}>1);
+   my $p = $i->{Header}->{RequestURL};
+   $p .= "index.html" if($p=~/\/$/);
+   if(-f "$conf{webgui_root}/www/$p") {                   # -- something locally and static?
+      processLocalStatic($c,$p);
+   } else {
+      print $c "HTTP/1.1 404 NOT FOUND\n\n";
+   }
+}
+
+sub processLocalStatic {
+   my($c,$p) = @_;
+   my $mime = "text/plain";
+
+   $mime = "text/html" if($p=~/\.html$/i);
+   $mime = "image/jpeg" if($p=~/\.jpg$/i);
+   $mime = "image/png" if($p=~/\.png$/i);
+   
+   if(open(my $fh,'<',"$conf{webgui_root}/www/$p")) {
+      print $c "HTTP/1.1 200 OK\nContent-Type: $mime\n\n";
+      binmode($fh);
+      my $buff;
+      my $n;
+      while($n=read($fh,$buff,4096)) {
+         print $c $buff;
+      }
+      close($fh);
+      
+   } else {
+      print $c "HTTP/1.1 404 NOT FOUND\n\n";
+   }
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub logReference {
+   my($no) = @_;
+   my $n = 1;
+   open(my $fh,"<","$ENV{HOME}/.print3r/log.json");
+   while(<$fh>) {
+      if($no == $n) {
+         my $d = eval { from_json($_); };
+         #print to_json($d,{pretty=>1,canonical=>1});
+         #%conf = %{$d->{settings}};
+         foreach my $k (keys %{$d->{settings}}) {
+            next if $k eq 'device';
+            next if $k eq 'uuid';
+            $conf{$k} = $d->{settings}->{$k};
+         }
+         @f = ();
+         push(@f,@{$d->{file_list}});
+         last;
+      }
+      $n++;
+   }
+   close $fh;
+}
+
+sub versions {
+   my(@vs);
+   my $fnc = "$ENV{HOME}/.print3r/versions.json";
+
+   # -- cache it for 24 hrs, as probing is slow (can take several seconds)
+   if((!-e "$ENV{HOME}/.print3r/versions.json") || (stat($fnc))[9] < time()-24*60*60) {
+      my(@apps) = map { $slicer->{$_}->{exe} } keys %$slicer;
+      push(@apps,'openscad','scriptcad');    # -- TODO: openscad reports version to stderr
+      #push(@apps,$conf{gviewer}) if($conf{gviewer});
+      foreach my $a (@apps) {
+         my $v = `$a --version 2> /dev/null`;
+         chop($v);
+         $v =~ s/\n.*//mg;  
+         $v = '?.?.?' if(!($v=~/\d\./));
+         $v = "$a $v" if($v=~/^\d\./ || $v =~ /^\?/);
+         push(@vs,$v);
+      }
+      writeJSON($fnc,\@vs);
+      return \@vs;
+   } else {
+      my $v = readJSON($fnc);
+      return $v;
+   }
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+sub fromJSON {
+   return eval { JSON->new->allow_nonref->relaxed([1])->decode($_[0]) };
+}
+
+sub toJSON {
+   my($v,$a) = @_;
+   my $j = JSON->new->allow_nonref->allow_blessed->canonical;
+   $j = $j->pretty unless($a&&!$a->{pretty});
+   return $j->encode($v);
+}
+
+sub readJSON {
+   my($fn) = @_;
+   local $/;
+   open(my $fh,"<",$fn);
+   my($d) = <$fh>;
+   close $fh;
+   return fromJSON($d);
+}
+
+sub writeJSON { 
+   my($fn,$d) = @_;
+   if(open(my $fh,">",$fn)) {
+      print $fh toJSON($d);
+      close $fh;
+   } else {
+      die "$NAME: ERROR: cannot write to $fn: $@\n";
+   }
+}
+
+# ----------------------------------------------------------------------------------------------------------------
+
+sub inline_args {
+   my($s) = @_;
+   return split(/,/,$s);
+}
+
+sub inline_function { 
+   my($n) = shift;
+   print "$me: calling inline_$n() with @_\n" if($conf{verbose});
+   @_ = eval("inline_$n(\@_)");
+   print "$me: => results: @_\n" if($conf{verbose});
+   print "$me: ERROR: inline_$n() failed: $@\n" if($@);
+   return "@_";
+}
+   
+sub inline_phases {
+   my($r,$n,$p,$opts) = @_;
+   my %v;
+   my(%m) = ('A'=>'a', 'B'=>'b', 'C'=>'c');
+
+   if($conf{multicolor_map}) {
+      (%m) = map { /(\w+)\s*[:=]\s*(\S+)/; ($1, $2); } split(/,/,$conf{multicolor_map});
+   }
+
+   if($n==2) {
+      if($n==2) {
+         $v{'a'} = $r < 1/2 ? 1-$r*2 : ($r-1/2)*2;     # 1..0..1
+         $v{'b'} = $r < 1/2 ? $r*2 : 1-($r-1/2)*2;     # 0..1..0
+      } else {
+         $v{'a'} = 1 - $r;
+         $v{'b'} = $r;
+      }
+      return "A$v{$m{'B'}} B$v{$m{'B'}}";
+   } else {
+      if($p==3) {
+         $v{'a'} = $r < 1/2 ? 1-$r*2 : 0;                                      # 1..0..0
+         $v{'b'} = $r < 1/2 ? $r*2 : 1 - ($r-1/2)*2;                           # 0..1..0
+         $v{'c'} = $r >= 1/2 ? ($r-1/2)*2 : 0;                                 # 0..0..1
+      } else {
+         $v{'a'} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;             # 1..0..0..1
+         $v{'b'} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;           # 0..1..0..0
+         $v{'c'} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
+      }
+      return "A$v{$m{'A'}} B$v{$m{'B'}} C$v{$m{'C'}}";
+   }
+}
+
+sub inline_hsl2cmy {
+   my($h,$s,$l,$opts) = @_;
+   my $r = (($h+180)%360)/360;
+   my %v;
+   my(%m) = ('A'=>'c', 'B'=>'m', 'C'=>'y', 'D'=>'k', 'E'=>'w');
+
+   if($conf{multicolor_cmymap}) {
+      (%m) = map { /(\w+)\s*[:=]\s*(\S+)/; ($1, $2); } split(/,/,$conf{multicolor_cmymap});
+   }
+   $v{'c'} = $r < 1/3 ? 1-$r*3 : $r >= 2/3 ? ($r-2/3)*3 : 0;             # 1..0..0..1
+   $v{'m'} = $r < 1/3 ? $r*3 : $r <= 2/3 ? 1 - ($r-1/3)*3 : 0;           # 0..1..0..0
+   $v{'y'} = $r >= 1/3 && $r < 2/3 ? ($r-1/3)*3 : $r >= 2/3 ? 1 - ($r-2/3)*3 : 0;    # 0..0..1..0
+   $v{'k'} = 0;
+   $v{'w'} = 0;
+   return "A$v{$m{'A'}} B$v{$m{'B'}} C$v{$m{'Y'}} D$v{$m{'K'}} E$v{$m{'W'}}";
+}
+
+sub inline_toolcolor {
+   my($n,$a,$b,$c,$d,$e) = @_;
+   $a = $a || 0;
+   $b = $b || 0;
+   $c = $c || 0;
+   $d = $d || 0;
+   $e = $e || 0;
+   my $f = 1.0;
+   $a *= $f;
+   $b *= $f;
+   $c *= $f;
+   $d *= $f;
+   $e *= $f;
+   return "M163 S0 P$a\nM163 S1 P$b\nM163 S2 P$c\nM163 S3 P$d\nM163 S4 P$e\nM164 S$n\n";
+}
