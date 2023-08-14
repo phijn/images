@@ -30,4 +30,4 @@ jobs:
       subfolder: './print3r/'
       imageNameAddon: '-print3r'
       platforms: 'linux/amd64'
-      imageTag: '${inputs.imageTag}'
+      imageTag: '${{ inputs.imageTag }}'
