@@ -1,0 +1,33 @@
+---
+name: Workflow "ocp_copy"
+
+on:
+  workflow_dispatch:
+    inputs:
+      imageTag:
+        description: 'imageTag'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - production
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  init:
+    uses: PhilippAuch/workflows/.github/workflows/init.yaml@main
+
+  build:
+    uses: PhilippAuch/workflows/.github/workflows/buildDocker.yaml@main
+    permissions:
+      packages: write
+      contents: read
+    with:
+      subfolder: './print3r/'
+      imageNameAddon: '-print3r'
+      platforms: 'linux/amd64'
+      imageTag: '${inputs.imageTag}'
