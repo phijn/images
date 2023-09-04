@@ -39,7 +39,7 @@ FROM cura as print3r-requirements
 # install print3r
 WORKDIR "/Print3r"
 RUN git pull
-RUN git checkout master
+RUN git checkout 7818dcfadfadc7d40dd9d07c4bb24ec4f14dda56
 COPY print3r/Makefile.patch ./Makefile.patch
 RUN patch < ./Makefile.patch
 COPY print3r/print3r.patch ./print3r.patch
