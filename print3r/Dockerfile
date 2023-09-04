@@ -66,8 +66,6 @@ RUN pip install camunda-external-task-client-python3 pydantic
 
 ENV PYTHONPATH=$PYTHONPATH:/home
 
-WORKDIR "/home"
-
 ENTRYPOINT ["/bin/sh", "-c", "python -u /home/cura/workers.py"]
 
 # dc run --rm print3r print3r --printer=x2 --slicer=cura5 --verbose=2 --output=/models/coaster.png render /models/04a2275e-0e9e-11ee-835e-0242ac1c0003_coaster.stl
