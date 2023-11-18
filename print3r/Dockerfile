@@ -62,7 +62,7 @@ ENV CAMUNDA_URL="https://camunda.philipp-auch.de/engine-rest"
 ENV CAMUNDA_PASSWORD="xecfo8-guxrad-cAbmar"
 ENV CAMUNDA_USER="worker"
 
-RUN pip install camunda-external-task-client-python3 pydantic
+RUN pip install camunda-external-task-client-python3 pydantic gnuplotlib numpy-stl matplotlib
 
 ENV PYTHONPATH=$PYTHONPATH:/home
 
