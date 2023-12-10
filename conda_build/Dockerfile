@@ -1,4 +1,4 @@
-FROM ubuntu:23.10 AS wget
+FROM ubuntu:24.04 AS wget
 RUN apt-get -qq update \
     && apt-get -qq install -y wget \
     && rm -rf /var/lib/apt/lists/*
